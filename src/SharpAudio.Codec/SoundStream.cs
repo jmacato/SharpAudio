@@ -17,6 +17,8 @@ namespace SharpAudio.Codec
         private AudioBuffer _buffer;
         private byte[] _data;
         private Stopwatch _timer;
+        private readonly TimeSpan SampleQuantum = TimeSpan.FromSeconds(0.2);
+        private readonly TimeSpan SampleWait = TimeSpan.FromSeconds(0.1);
 
         private static byte[] MakeFourCC(string magic)
         {
@@ -79,37 +81,42 @@ namespace SharpAudio.Codec
             var fourcc = stream.ReadFourCc();
             stream.Seek(0, SeekOrigin.Begin);
 
-            if (fourcc.SequenceEqual(MakeFourCC("RIFF")))
-            {
-                _decoder = new WaveDecoder(stream);
-            }
-            else if (fourcc.SequenceEqual(MakeFourCC("ID3\u0001")) ||
-                    fourcc.SequenceEqual(MakeFourCC("ID3\u0002")) ||
-                    fourcc.SequenceEqual(MakeFourCC("ID3\u0003")) ||
-                    fourcc.AsSpan(0,2).SequenceEqual(new byte[] { 0xFF, 0xFB }))
-            {
-                _decoder = new Mp3Decoder(stream);
-                IsStreamed = true;
-            }
-            else if (fourcc.SequenceEqual(MakeFourCC("OggS")))
-            {
-                _decoder = new VorbisDecoder(stream);
-                IsStreamed = true;
-            }
-            else
-            {
-                throw new InvalidDataException("Unknown format: " + fourcc);
-            }
+            _decoder = new FfmpegDecoder(stream);
+            
+            // if (fourcc.SequenceEqual(MakeFourCC("RIFF")))
+            // {
+            //     _decoder = new WaveDecoder(stream);
+            // }
+            // else if (fourcc.SequenceEqual(MakeFourCC("ID3\u0001")) ||
+            //         fourcc.SequenceEqual(MakeFourCC("ID3\u0002")) ||
+            //         fourcc.SequenceEqual(MakeFourCC("ID3\u0003")) ||
+            //         fourcc.AsSpan(0,2).SequenceEqual(new byte[] { 0xFF, 0xFB }))
+            // {
+            //     _decoder = new Mp3Decoder(stream);
+            //     IsStreamed = true;
+            // }
+            // else if (fourcc.SequenceEqual(MakeFourCC("OggS")))
+            // {
+            //     _decoder = new VorbisDecoder(stream);
+            //     IsStreamed = true;
+            // }
+            // else
+            // {
+            //     throw new InvalidDataException("Unknown format: " + fourcc);
+            // }
 
             Source = engine.CreateSource();
 
             if (IsStreamed)
             {
                 _chain = new BufferChain(engine);
-                _decoder.GetSamples(TimeSpan.FromSeconds(1), ref _data);
+                _decoder.GetSamples(SampleQuantum, ref _data);
                 _chain.QueueData(Source, _data, _decoder.Format);
 
-                _decoder.GetSamples(TimeSpan.FromSeconds(1), ref _data);
+                _decoder.GetSamples(SampleQuantum, ref _data);
+                _chain.QueueData(Source, _data, _decoder.Format);
+
+                _decoder.GetSamples(SampleQuantum, ref _data);
                 _chain.QueueData(Source, _data, _decoder.Format);
             }
             else
@@ -139,11 +146,11 @@ namespace SharpAudio.Codec
                     {
                         if (Source.BuffersQueued < 3 && !_decoder.IsFinished)
                         {
-                            _decoder.GetSamples(TimeSpan.FromSeconds(1), ref _data);
+                            _decoder.GetSamples(SampleQuantum, ref _data);
                             _chain.QueueData(Source, _data, Format);
                         }
 
-                        Thread.Sleep(100);
+                        Thread.Sleep(SampleWait);
                     }
                     _timer.Stop();
                 });
