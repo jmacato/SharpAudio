@@ -80,9 +80,7 @@ namespace SharpAudio.Codec
             IsStreamed = false;
             var fourcc = stream.ReadFourCc();
             stream.Seek(0, SeekOrigin.Begin);
-
             _decoder = new FfmpegDecoder(stream);
-            
             // if (fourcc.SequenceEqual(MakeFourCC("RIFF")))
             // {
             //     _decoder = new WaveDecoder(stream);
