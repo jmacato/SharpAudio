@@ -268,32 +268,6 @@ namespace SharpAudio.Codec.Mp3
                     data = new byte[bufferSize];
                     fixed (byte* h = &data[0])
                         Buffer.MemoryCopy(ff.av_dst_frame->data[0], h, bufferSize, bufferSize);
-
-                    // var p1 = new byte[bufferSize / 2];
-                    // var p2 = new byte[bufferSize / 2];
-
-                    // var p3 = new byte[bufferSize];
-
-                    // fixed (byte* h = &p3[0])
-                    //     Buffer.MemoryCopy(dst->data[0], h, bufferSize, bufferSize);
-
-                    // Array.Copy(p3, 0, p1, 0, bufferSize / 2);
-                    // Array.Copy(p3, bufferSize / 2, p2, 0, bufferSize / 2);
-
-                    // int x = 0, z = 0;
-                    // Array.Clear(p3, 0, bufferSize);
-                    // do
-                    // {
-                    //     p3[z] = p2[x];
-                    //     z++;
-                    //     p3[z] = p1[x];
-                    //     z++;
-                    //     if (x % 2 == 0) x++;
-                    // } while (z < bufferSize);
-
-                    // fixed (byte* t = &data[0])
-                    // fixed (byte* h = &p3[0])
-                    //     Buffer.MemoryCopy(h, t, bufferSize, bufferSize);
                 }
 
                 fixed (AVFrame** x = &ff.av_dst_frame)
