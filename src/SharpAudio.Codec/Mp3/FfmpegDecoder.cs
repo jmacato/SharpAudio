@@ -109,19 +109,20 @@ namespace SharpAudio.Codec.Mp3
             codec->request_sample_fmt = AVSampleFormat.AV_SAMPLE_FMT_S16;
             codec->request_channel_layout = (ulong)ffmpeg.av_get_default_channel_layout(2);
 
-            SetAudioFormat(codec, ff.format_context);
+            SetAudioFormat(ff.format_context);
 
-            ff.swr_context = ffmpeg.swr_alloc();
-            ffmpeg.av_opt_set_int(ff.swr_context, "in_channel_layout", (int)codec->channel_layout, 0);
-            ffmpeg.av_opt_set_int(ff.swr_context, "in_channel_count", codec->channels, 0);
-            ffmpeg.av_opt_set_int(ff.swr_context, "in_sample_rate", codec->sample_rate, 0);
-            ffmpeg.av_opt_set_int(ff.swr_context, "out_channel_layout", ffmpeg.av_get_default_channel_layout(2), 0);
-            ffmpeg.av_opt_set_int(ff.swr_context, "out_channel_count", 2, 0);
-            ffmpeg.av_opt_set_int(ff.swr_context, "out_sample_rate", 48000, 0);
-            ffmpeg.av_opt_set_sample_fmt(ff.swr_context, "in_sample_fmt", codec->sample_fmt, 0);
-            ffmpeg.av_opt_set_sample_fmt(ff.swr_context, "out_sample_fmt", AVSampleFormat.AV_SAMPLE_FMT_S16, 0);
+            ff.swr_context = ffmpeg.swr_alloc_set_opts(null,
+                                                      (long)codec->channel_layout,
+                                                      AVSampleFormat.AV_SAMPLE_FMT_S16,
+                                                      44100,
+                                                      (long)codec->channel_layout,
+                                                      codec->sample_fmt,
+                                                      codec->sample_rate,
+                                                      0,
+                                                      null);
 
             ffmpeg.swr_init(ff.swr_context);
+
 
             if (ffmpeg.swr_is_initialized(ff.swr_context) == 0)
             {
@@ -129,16 +130,17 @@ namespace SharpAudio.Codec.Mp3
             }
 
             ff.av_packet = ffmpeg.av_packet_alloc();
-            ff.av_frame = ffmpeg.av_frame_alloc();
+            ff.av_src_frame = ffmpeg.av_frame_alloc();
+
 
         }
 
-        private void SetAudioFormat(AVCodecContext* codec, AVFormatContext* fmt)
+        private void SetAudioFormat(AVFormatContext* fmt)
         {
-            _audioFormat.SampleRate = 48000;
+            _audioFormat.SampleRate = 44100;
             _audioFormat.Channels = 2;
             _audioFormat.BitsPerSample = 16;
-            _numSamples = (int)((fmt->duration / (float)ffmpeg.AV_TIME_BASE) * codec->sample_rate * codec->channels);
+            _numSamples = (int)((fmt->duration / (float)ffmpeg.AV_TIME_BASE) * 44100 * 2);
         }
 
         public override bool IsFinished => _isFinished;
@@ -219,8 +221,6 @@ namespace SharpAudio.Codec.Mp3
         {
             var memStream = new MemoryStream();
             byte* convertedData = null;
-
-            int samplePos = 0;
             int frameFinished = 0;
 
             do
@@ -229,21 +229,21 @@ namespace SharpAudio.Codec.Mp3
                 {
                     if (ff.av_packet->stream_index == stream_index)
                     {
-                        int len = Decode(ff.av_stream->codec, ff.av_frame, ref frameFinished, ff.av_packet);
-                        byte[] xdata = null;
-                        ProcessAudioFrame(ref xdata);
-                        memStream.Write(xdata, 0, xdata.Count());
-                        samplePos += xdata.Count();
-
+                        int len = Decode(ff.av_stream->codec, ff.av_src_frame, ref frameFinished, ff.av_packet);
+                        if (frameFinished > 0)
+                        {
+                            byte[] xdata = null;
+                            ProcessAudioFrame(ref xdata);
+                            memStream.Write(xdata, 0, xdata.Count());
+                        }
                     }
                 }
                 else
                 {
                     _isFinished = true;
                 }
-            } while (  !_isFinished);
+            } while (!_isFinished);
 
-            _numSamples = samplePos;
             data = memStream.GetBuffer();
 
             return 0;
@@ -253,25 +253,51 @@ namespace SharpAudio.Codec.Mp3
         {
             try
             {
-                byte[] buffer = new byte[ff.av_frame->sample_rate * 2];
+                ff.av_dst_frame = ffmpeg.av_frame_alloc();
+                ff.av_dst_frame->sample_rate = 44100;
+                ff.av_dst_frame->format = (int)AVSampleFormat.AV_SAMPLE_FMT_S16;
+                ff.av_dst_frame->channels = 2;
+                ff.av_dst_frame->channel_layout = (ulong)ffmpeg.av_get_default_channel_layout(ff.av_dst_frame->channels);
 
-                fixed (byte** buffers = new byte*[8])
+                ffmpeg.swr_convert_frame(ff.swr_context, ff.av_dst_frame, ff.av_src_frame);
+
+                int bufferSize = ffmpeg.av_samples_get_buffer_size(null, ff.av_stream->codec->channels, ff.av_dst_frame->nb_samples, ff.av_stream->codec->sample_fmt, 1);
+
+                if (bufferSize > 0)
                 {
-                    fixed (byte* bufferPtr = &buffer[0])
-                    {
-                        // Convert
-                        buffers[0] = bufferPtr;
-                        int samplesCount = ffmpeg.swr_convert(ff.swr_context, buffers, ff.av_stream->codec->sample_rate, (byte**)&ff.av_frame->data, ff.av_frame->nb_samples);
-                        var bufferSize = ffmpeg.av_samples_get_buffer_size(null, ff.av_stream->codec->channels, samplesCount, ff.av_stream->codec->sample_fmt, 1);
+                    data = new byte[bufferSize];
+                    fixed (byte* h = &data[0])
+                        Buffer.MemoryCopy(ff.av_dst_frame->data[0], h, bufferSize, bufferSize);
 
-                        // Send Frame
-                        if (samplesCount > 0)
-                        {
-                            data = new byte[bufferSize];
-                            Buffer.BlockCopy(buffer, 0, data, 0, bufferSize);
-                        }
-                    }
+                    // var p1 = new byte[bufferSize / 2];
+                    // var p2 = new byte[bufferSize / 2];
+
+                    // var p3 = new byte[bufferSize];
+
+                    // fixed (byte* h = &p3[0])
+                    //     Buffer.MemoryCopy(dst->data[0], h, bufferSize, bufferSize);
+
+                    // Array.Copy(p3, 0, p1, 0, bufferSize / 2);
+                    // Array.Copy(p3, bufferSize / 2, p2, 0, bufferSize / 2);
+
+                    // int x = 0, z = 0;
+                    // Array.Clear(p3, 0, bufferSize);
+                    // do
+                    // {
+                    //     p3[z] = p2[x];
+                    //     z++;
+                    //     p3[z] = p1[x];
+                    //     z++;
+                    //     if (x % 2 == 0) x++;
+                    // } while (z < bufferSize);
+
+                    // fixed (byte* t = &data[0])
+                    // fixed (byte* h = &p3[0])
+                    //     Buffer.MemoryCopy(h, t, bufferSize, bufferSize);
                 }
+
+                fixed (AVFrame** x = &ff.av_dst_frame)
+                    ffmpeg.av_frame_free(x);
             }
             catch (Exception)
             {
