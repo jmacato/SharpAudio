@@ -26,7 +26,7 @@ namespace SharpAudio.Tests
             AudioFormat format;
             format.BitsPerSample = 16;
             format.Channels = 1;
-            format.SampleRate = 44100;
+            format.SampleRate = 48000;
             float freq = 440.0f;
             var size = format.SampleRate;
             var samples = new short[size];

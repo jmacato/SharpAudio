@@ -19,7 +19,7 @@ namespace SharpAudio.Tests
 
             Assert.True(soundStream.Format.BitsPerSample == 16);
             Assert.True(soundStream.Format.Channels == 2);
-            Assert.True(soundStream.Format.SampleRate == 44100);
+            Assert.True(soundStream.Format.SampleRate == 48000);
 
             var duration = soundStream.Duration;
 
@@ -36,7 +36,7 @@ namespace SharpAudio.Tests
 
             Assert.True(soundStream.Format.BitsPerSample == 16);
             Assert.True(soundStream.Format.Channels == 2);
-            Assert.True(soundStream.Format.SampleRate == 44100);
+            Assert.True(soundStream.Format.SampleRate == 48000);
 
             var duration = soundStream.Duration;
 
@@ -53,7 +53,7 @@ namespace SharpAudio.Tests
 
             Assert.True(soundStream.Format.BitsPerSample == 16);
             Assert.True(soundStream.Format.Channels == 2);
-            Assert.True(soundStream.Format.SampleRate == 44100);
+            Assert.True(soundStream.Format.SampleRate == 48000);
 
             var duration = soundStream.Duration;
 
