@@ -17,8 +17,8 @@ namespace SharpAudio.Codec
         private AudioBuffer _buffer;
         private byte[] _data;
         private Stopwatch _timer;
-        private readonly TimeSpan SampleQuantum = TimeSpan.FromSeconds(0.1);
-        private readonly TimeSpan SampleWait = TimeSpan.FromSeconds(0.05);
+        private readonly TimeSpan SampleQuantum = TimeSpan.FromSeconds(0.5);
+        private readonly TimeSpan SampleWait = TimeSpan.FromSeconds(0.1);
 
         private static byte[] MakeFourCC(string magic)
         {
@@ -84,7 +84,7 @@ namespace SharpAudio.Codec
 
             _chain = new BufferChain(engine);
 
-            _decoder.GetSamples(TimeSpan.FromSeconds(2), ref _data);
+            _decoder.GetSamples(SampleQuantum, ref _data);
             _chain.QueueData(Source, _data, _decoder.Format);
 
             _timer = new Stopwatch();
@@ -97,9 +97,7 @@ namespace SharpAudio.Codec
         {
             Source.Play();
             _timer.Start();
-
-            // if (IsStreamed)
-            // {
+ 
             var t = Task.Run(() =>
             {
                 while (Source.IsPlaying())
@@ -113,8 +111,7 @@ namespace SharpAudio.Codec
                     Thread.Sleep(SampleWait);
                 }
                 _timer.Stop();
-            });
-            // }
+            }); 
         }
 
         /// <summary>

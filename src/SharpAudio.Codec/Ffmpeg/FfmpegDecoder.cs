@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Threading;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -18,6 +19,13 @@ namespace SharpAudio.Codec.Mp3
         private int stream_index;
         private bool _isFinished;
         private FFmpegPointers ff = new FFmpegPointers();
+        private byte[] tempSampleBuf;
+        private CircularBuffer _slidestream;
+
+        private readonly AVSampleFormat _DESIRED_SAMPLE_FORMAT = AVSampleFormat.AV_SAMPLE_FMT_S16;
+        private readonly int _DESIRED_SAMPLE_RATE = 44_100;
+        private readonly int _DESIRED_CHANNEL_COUNT = 2;
+
         private unsafe int Read(void* opaque, byte* targetBuffer, int targetBufferLength)
         {
             try
@@ -46,6 +54,8 @@ namespace SharpAudio.Codec.Mp3
                 return ffmpeg.AVERROR_EOF;
             }
         }
+
+
 
         public FFmpegDecoder(Stream src)
         {
@@ -118,7 +128,7 @@ namespace SharpAudio.Codec.Mp3
             SetAudioFormat();
 
             ff.swr_context = ffmpeg.swr_alloc_set_opts(null,
-                                                      (long)ff.av_codec->channel_layout,
+                                                      ffmpeg.av_get_default_channel_layout(_DESIRED_CHANNEL_COUNT),
                                                       _DESIRED_SAMPLE_FORMAT,
                                                       _DESIRED_SAMPLE_RATE,
                                                       (long)ff.av_codec->channel_layout,
@@ -137,13 +147,10 @@ namespace SharpAudio.Codec.Mp3
             ff.av_packet = ffmpeg.av_packet_alloc();
             ff.av_src_frame = ffmpeg.av_frame_alloc();
 
-            this.overspill_time = TimeSpan.FromSeconds(5);
+            this.tempSampleBuf = new byte[(int)(_audioFormat.SampleRate * _audioFormat.Channels)];
 
-            var xe = (int)(overspill_time.TotalSeconds * _audioFormat.SampleRate * _audioFormat.Channels);
+            this._slidestream = new CircularBuffer(tempSampleBuf.Length);
 
-            this._slidestream = new CircularBuffer(xe);
-
-            Task.Factory.StartNew(DecodeLoop, TaskCreationOptions.LongRunning);
         }
 
         private unsafe void SetAudioFormat()
@@ -220,58 +227,50 @@ namespace SharpAudio.Codec.Mp3
             }
         }
 
-        private TimeSpan overspill_time;
-        byte[] overspill;
-        private CircularBuffer _slidestream;
-        int overspill_count = 0;
-        int overspill_index = 0;
-        private AVSampleFormat _DESIRED_SAMPLE_FORMAT = AVSampleFormat.AV_SAMPLE_FMT_S16;
-        private int _DESIRED_SAMPLE_RATE = 44_100;
-        private int _DESIRED_CHANNEL_COUNT = 2;
-        volatile bool _isPrimed = false;
-        public async Task DecodeLoop()
+        public override long GetSamples(int samples, ref byte[] data)
         {
             int frameFinished = 0;
-            var lim = 2 * _DESIRED_SAMPLE_RATE * _DESIRED_CHANNEL_COUNT;
-            var buf = new byte[lim];
+            int count = 0;
+
+            if (_slidestream.Count > samples)
+            {
+                data = new byte[samples];
+                _slidestream.Read(data, 0, samples);
+                return samples;
+            }
+
             do
             {
-                if (_slidestream.Count >= lim)
-                {
-                    await Task.Delay(10);
-                    continue;
-                }
-
-                int count = 0;
-
                 unsafe
                 {
                     if (ffmpeg.av_read_frame(ff.format_context, ff.av_packet) >= 0)
                     {
                         if (ff.av_packet->stream_index == stream_index)
                         {
-                            int len = Decode(ff.av_codec, ff.av_src_frame, ref frameFinished, ff.av_packet);
+                            int len = Decode(ff.av_stream->codec, ff.av_src_frame, ref frameFinished, ff.av_packet);
                             if (frameFinished > 0)
                             {
-                                ProcessAudioFrame(ref buf, ref count);
-
+                                ProcessAudioFrame(ref tempSampleBuf, ref count);
                             }
                         }
                     }
                     else
                     {
                         _isFinished = true;
+                        return 0;
                     }
                 }
 
-                _slidestream.Write(buf, 0, count);
+                _slidestream.Write(tempSampleBuf, 0, count);
 
+                if (_slidestream.Count > samples)
+                {
+                    break;
+                }
 
             } while (!_isFinished);
-        }
 
-        public override long GetSamples(int samples, ref byte[] data)
-        {
+
             data = new byte[samples];
             _slidestream.Read(data, 0, samples);
             return samples;
@@ -279,18 +278,18 @@ namespace SharpAudio.Codec.Mp3
 
         private unsafe void ProcessAudioFrame(ref byte[] data, ref int count)
         {
-            var frame = ffmpeg.av_frame_alloc();
-            frame->sample_rate = _DESIRED_SAMPLE_RATE;
-            frame->format = (int)_DESIRED_SAMPLE_FORMAT;
-            frame->channels = _DESIRED_CHANNEL_COUNT;
-            frame->channel_layout = (ulong)ffmpeg.av_get_default_channel_layout(frame->channels);
+            ff.av_dst_frame = ffmpeg.av_frame_alloc();
+            ff.av_dst_frame->sample_rate = _DESIRED_SAMPLE_RATE;
+            ff.av_dst_frame->format = (int)_DESIRED_SAMPLE_FORMAT;
+            ff.av_dst_frame->channels = _DESIRED_CHANNEL_COUNT;
+            ff.av_dst_frame->channel_layout = (ulong)ffmpeg.av_get_default_channel_layout(ff.av_dst_frame->channels);
 
-            ffmpeg.swr_convert_frame(ff.swr_context, frame, ff.av_src_frame);
+            ffmpeg.swr_convert_frame(ff.swr_context, ff.av_dst_frame, ff.av_src_frame);
 
             int bufferSize = ffmpeg.av_samples_get_buffer_size(null,
-                                frame->channels,
-                                frame->nb_samples,
-                                (AVSampleFormat)frame->format,
+                                ff.av_dst_frame->channels,
+                                ff.av_dst_frame->nb_samples,
+                                (AVSampleFormat)ff.av_dst_frame->format,
                                 1);
 
             if (bufferSize <= 0)
@@ -301,10 +300,10 @@ namespace SharpAudio.Codec.Mp3
             count = bufferSize;
 
             fixed (byte* h = &data[0])
-                Buffer.MemoryCopy(frame->data[0], h, bufferSize, bufferSize);
-                
-            ffmpeg.av_frame_free(&frame);
+                Buffer.MemoryCopy(ff.av_dst_frame->data[0], h, bufferSize, bufferSize);
 
+            fixed (AVFrame** x = &ff.av_dst_frame)
+                ffmpeg.av_frame_free(x);
         }
     }
 }

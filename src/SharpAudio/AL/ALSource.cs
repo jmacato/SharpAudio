@@ -53,7 +53,6 @@ namespace SharpAudio.AL
         {
             AlNative.alGetSourcei(_source, AlNative.AL_SOURCE_STATE, out int state);
             bool playing = state == AlNative.AL_PLAYING;
-
             return playing;
         }
 
