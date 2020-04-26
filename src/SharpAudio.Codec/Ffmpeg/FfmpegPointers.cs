@@ -2,7 +2,7 @@ using FFmpeg.AutoGen;
 
 namespace SharpAudio.Codec.Mp3
 {
-    internal unsafe struct FfmpegPointers
+    internal unsafe struct FFmpegPointers
     {
         public AVFormatContext* format_context;
         public AVIOContext* ioContext;
@@ -11,5 +11,6 @@ namespace SharpAudio.Codec.Mp3
         public AVPacket* av_packet;
         public AVFrame* av_src_frame;
         public AVFrame* av_dst_frame;
+        public AVCodecContext* av_codec;
     }
 }

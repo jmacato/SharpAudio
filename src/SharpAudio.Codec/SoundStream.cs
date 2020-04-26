@@ -17,7 +17,7 @@ namespace SharpAudio.Codec
         private AudioBuffer _buffer;
         private byte[] _data;
         private Stopwatch _timer;
-        private readonly TimeSpan SampleQuantum = TimeSpan.FromSeconds(0.25);
+        private readonly TimeSpan SampleQuantum = TimeSpan.FromSeconds(0.1);
         private readonly TimeSpan SampleWait = TimeSpan.FromSeconds(0.05);
 
         private static byte[] MakeFourCC(string magic)
@@ -78,19 +78,13 @@ namespace SharpAudio.Codec
                 throw new ArgumentNullException("Stream cannot be null!");
  
 
-            _decoder = new FfmpegDecoder(stream);
+            _decoder = new FFmpegDecoder(stream);
 
             Source = engine.CreateSource();
 
             _chain = new BufferChain(engine);
 
-            _decoder.GetSamples(SampleQuantum, ref _data);
-            _chain.QueueData(Source, _data, _decoder.Format);
-
-            _decoder.GetSamples(SampleQuantum, ref _data);
-            _chain.QueueData(Source, _data, _decoder.Format);
-
-            _decoder.GetSamples(SampleQuantum, ref _data);
+            _decoder.GetSamples(TimeSpan.FromSeconds(2), ref _data);
             _chain.QueueData(Source, _data, _decoder.Format);
 
             _timer = new Stopwatch();

@@ -1,12 +1,14 @@
+using System.Threading;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System;
 using FFmpeg.AutoGen;
 using System.IO;
+using System.Threading.Tasks;
 
 namespace SharpAudio.Codec.Mp3
 {
-    public class FfmpegDecoder : Decoder
+    public class FFmpegDecoder : Decoder
     {
         private const int fsStreamSize = 8192;
         private byte[] ffmpegFSBuf = new byte[fsStreamSize];
@@ -15,7 +17,7 @@ namespace SharpAudio.Codec.Mp3
         private avio_alloc_context_seek avioSeek;
         private int stream_index;
         private bool _isFinished;
-        private FfmpegPointers ff = new FfmpegPointers();
+        private FFmpegPointers ff = new FFmpegPointers();
         private unsafe int Read(void* opaque, byte* targetBuffer, int targetBufferLength)
         {
             try
@@ -45,7 +47,7 @@ namespace SharpAudio.Codec.Mp3
             }
         }
 
-        public FfmpegDecoder(Stream src)
+        public FFmpegDecoder(Stream src)
         {
             targetStream = src;
 
@@ -97,31 +99,31 @@ namespace SharpAudio.Codec.Mp3
             }
 
             ff.av_stream = ff.format_context->streams[stream_index];
+            ff.av_codec = ff.av_stream->codec;
 
-            AVCodecContext* codec = ff.av_stream->codec;
-            if (ffmpeg.avcodec_open2(codec, ffmpeg.avcodec_find_decoder(codec->codec_id), null) < 0)
+            if (ffmpeg.avcodec_open2(ff.av_codec, ffmpeg.avcodec_find_decoder(ff.av_codec->codec_id), null) < 0)
             {
                 throw new FormatException("FFMPEG: Failed to open decoder for stream #{stream_index} in IO stream.");
             }
 
             // Fixes SWR @ 0x2192200] Input channel count and layout are unset error.
-            if (codec->channel_layout == 0)
+            if (ff.av_codec->channel_layout == 0)
             {
-                codec->channel_layout = (ulong)ffmpeg.av_get_default_channel_layout(codec->channels);
+                ff.av_codec->channel_layout = (ulong)ffmpeg.av_get_default_channel_layout(ff.av_codec->channels);
             }
 
-            codec->request_channel_layout = (ulong)ffmpeg.av_get_default_channel_layout(codec->channels);
-            codec->request_sample_fmt = AVSampleFormat.AV_SAMPLE_FMT_S16;
+            ff.av_codec->request_channel_layout = (ulong)ffmpeg.av_get_default_channel_layout(ff.av_codec->channels);
+            ff.av_codec->request_sample_fmt = _DESIRED_SAMPLE_FORMAT;
 
             SetAudioFormat();
 
             ff.swr_context = ffmpeg.swr_alloc_set_opts(null,
-                                                      (long)codec->channel_layout,
-                                                      AVSampleFormat.AV_SAMPLE_FMT_S16,
-                                                      44100,
-                                                      (long)codec->channel_layout,
-                                                      codec->sample_fmt,
-                                                      codec->sample_rate,
+                                                      (long)ff.av_codec->channel_layout,
+                                                      _DESIRED_SAMPLE_FORMAT,
+                                                      _DESIRED_SAMPLE_RATE,
+                                                      (long)ff.av_codec->channel_layout,
+                                                      ff.av_codec->sample_fmt,
+                                                      ff.av_codec->sample_rate,
                                                       0,
                                                       null);
 
@@ -137,17 +139,19 @@ namespace SharpAudio.Codec.Mp3
 
             this.overspill_time = TimeSpan.FromSeconds(5);
 
-            overspill = new byte[(int)(overspill_time.TotalSeconds * _audioFormat.SampleRate * _audioFormat.Channels)];
+            var xe = (int)(overspill_time.TotalSeconds * _audioFormat.SampleRate * _audioFormat.Channels);
 
+            this._slidestream = new CircularBuffer(xe);
 
+            Task.Factory.StartNew(DecodeLoop, TaskCreationOptions.LongRunning);
         }
 
         private unsafe void SetAudioFormat()
         {
-            _audioFormat.SampleRate = 44100;
-            _audioFormat.Channels = 2;
+            _audioFormat.SampleRate = _DESIRED_SAMPLE_RATE;
+            _audioFormat.Channels = _DESIRED_CHANNEL_COUNT;
             _audioFormat.BitsPerSample = 16;
-            _numSamples = (int)((ff.format_context->duration / (float)ffmpeg.AV_TIME_BASE) * 44100 * 2);
+            _numSamples = (int)((ff.format_context->duration / (float)ffmpeg.AV_TIME_BASE) * _DESIRED_SAMPLE_RATE * _DESIRED_CHANNEL_COUNT);
         }
 
         public override bool IsFinished => _isFinished;
@@ -218,107 +222,89 @@ namespace SharpAudio.Codec.Mp3
 
         private TimeSpan overspill_time;
         byte[] overspill;
+        private CircularBuffer _slidestream;
         int overspill_count = 0;
         int overspill_index = 0;
-
-        public override long GetSamples(int samples, ref byte[] data)
+        private AVSampleFormat _DESIRED_SAMPLE_FORMAT = AVSampleFormat.AV_SAMPLE_FMT_S16;
+        private int _DESIRED_SAMPLE_RATE = 44_100;
+        private int _DESIRED_CHANNEL_COUNT = 2;
+        volatile bool _isPrimed = false;
+        public async Task DecodeLoop()
         {
-            var memStream = new MemoryStream();
             int frameFinished = 0;
-
-            if (overspill_count > 0)
+            var lim = 2 * _DESIRED_SAMPLE_RATE * _DESIRED_CHANNEL_COUNT;
+            var buf = new byte[lim];
+            do
             {
-                if (overspill_count > samples)
+                if (_slidestream.Count >= lim)
                 {
-                    memStream.Write(overspill, overspill_index, samples);
-                    overspill_count -= samples;
-                    overspill_index += samples;
-                    data = new byte[samples];
-                    Buffer.BlockCopy(memStream.GetBuffer(), 0, data, 0, samples);
-                    return samples;
+                    await Task.Delay(10);
+                    continue;
                 }
-                else
-                {
-                    memStream.Write(overspill, 0, overspill_count);
-                    overspill_count = 0;
-                    overspill_index = 0;
-                }
-            }
 
-            unsafe
-            {
-                do
+                int count = 0;
+
+                unsafe
                 {
                     if (ffmpeg.av_read_frame(ff.format_context, ff.av_packet) >= 0)
                     {
                         if (ff.av_packet->stream_index == stream_index)
                         {
-                            int len = Decode(ff.av_stream->codec, ff.av_src_frame, ref frameFinished, ff.av_packet);
+                            int len = Decode(ff.av_codec, ff.av_src_frame, ref frameFinished, ff.av_packet);
                             if (frameFinished > 0)
                             {
-                                ProcessAudioFrame(out var xdata);
-                                memStream.Write(xdata, 0, xdata.Length);
+                                ProcessAudioFrame(ref buf, ref count);
+
                             }
                         }
                     }
                     else
                     {
                         _isFinished = true;
-                        return 0;
                     }
-
-                    if (memStream.Length > samples)
-                    {
-                        var curBuf = memStream.GetBuffer();
-                        overspill_count = (int)memStream.Length - samples;
-                        Buffer.BlockCopy(curBuf, samples, overspill, 0, overspill_count);
-                        data = new byte[samples];
-                        Buffer.BlockCopy(curBuf, 0, data, 0, samples);
-                        return samples;
-                    }
-
-                } while (!_isFinished);
-            }
-
-            data = memStream.GetBuffer();
-
-            return data.Length;
-        }
-
-        private unsafe void ProcessAudioFrame(out byte[] data)
-        {
-            data = null;
-
-            try
-            {
-                ff.av_dst_frame = ffmpeg.av_frame_alloc();
-                ff.av_dst_frame->sample_rate = 44100;
-                ff.av_dst_frame->format = (int)AVSampleFormat.AV_SAMPLE_FMT_S16;
-                ff.av_dst_frame->channels = 2;
-                ff.av_dst_frame->channel_layout = (ulong)ffmpeg.av_get_default_channel_layout(ff.av_dst_frame->channels);
-
-                ffmpeg.swr_convert_frame(ff.swr_context, ff.av_dst_frame, ff.av_src_frame);
-
-                int bufferSize = ffmpeg.av_samples_get_buffer_size(null,
-                                    ff.av_dst_frame->channels,
-                                    ff.av_dst_frame->nb_samples,
-                                    (AVSampleFormat)ff.av_dst_frame->format,
-                                    1);
-
-                if (bufferSize > 0)
-                {
-                    data = new byte[bufferSize];
-                    fixed (byte* h = &data[0])
-                        Buffer.MemoryCopy(ff.av_dst_frame->data[0], h, bufferSize, bufferSize);
                 }
 
-                fixed (AVFrame** x = &ff.av_dst_frame)
-                    ffmpeg.av_frame_free(x);
-            }
-            catch (Exception)
-            {
+                _slidestream.Write(buf, 0, count);
 
+
+            } while (!_isFinished);
+        }
+
+        public override long GetSamples(int samples, ref byte[] data)
+        {
+            data = new byte[samples];
+            _slidestream.Read(data, 0, samples);
+            return samples;
+        }
+
+        private unsafe void ProcessAudioFrame(ref byte[] data, ref int count)
+        {
+            var frame = ffmpeg.av_frame_alloc();
+            frame->sample_rate = _DESIRED_SAMPLE_RATE;
+            frame->format = (int)_DESIRED_SAMPLE_FORMAT;
+            frame->channels = _DESIRED_CHANNEL_COUNT;
+            frame->channel_layout = (ulong)ffmpeg.av_get_default_channel_layout(frame->channels);
+
+            ffmpeg.swr_convert_frame(ff.swr_context, frame, ff.av_src_frame);
+
+            int bufferSize = ffmpeg.av_samples_get_buffer_size(null,
+                                frame->channels,
+                                frame->nb_samples,
+                                (AVSampleFormat)frame->format,
+                                1);
+
+            if (bufferSize <= 0)
+            {
+                throw new Exception($"ffmpeg returned an invalid buffer size {bufferSize}");
             }
+
+            count = bufferSize;
+
+            fixed (byte* h = &data[0])
+                Buffer.MemoryCopy(frame->data[0], h, bufferSize, bufferSize);
+                
+            ffmpeg.av_frame_free(&frame);
+
         }
     }
 }
