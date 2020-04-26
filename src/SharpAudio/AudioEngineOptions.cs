@@ -13,7 +13,7 @@
         /// </summary>
         public int SampleChannels;
 
-        public AudioEngineOptions() : this(48000, 2)
+        public AudioEngineOptions() : this(44100, 2)
         {
 
         }

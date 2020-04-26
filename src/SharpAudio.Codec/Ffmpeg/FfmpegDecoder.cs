@@ -3,7 +3,6 @@ using System.Runtime.InteropServices;
 using System;
 using FFmpeg.AutoGen;
 using System.IO;
-using System.Threading;
 
 namespace SharpAudio.Codec.Mp3
 {
@@ -119,7 +118,7 @@ namespace SharpAudio.Codec.Mp3
             ff.swr_context = ffmpeg.swr_alloc_set_opts(null,
                                                       (long)codec->channel_layout,
                                                       AVSampleFormat.AV_SAMPLE_FMT_S16,
-                                                      48000,
+                                                      44100,
                                                       (long)codec->channel_layout,
                                                       codec->sample_fmt,
                                                       codec->sample_rate,
@@ -136,7 +135,7 @@ namespace SharpAudio.Codec.Mp3
             ff.av_packet = ffmpeg.av_packet_alloc();
             ff.av_src_frame = ffmpeg.av_frame_alloc();
 
-            this.overspill_time = TimeSpan.FromSeconds(2);
+            this.overspill_time = TimeSpan.FromSeconds(5);
 
             overspill = new byte[(int)(overspill_time.TotalSeconds * _audioFormat.SampleRate * _audioFormat.Channels)];
 
@@ -145,10 +144,10 @@ namespace SharpAudio.Codec.Mp3
 
         private unsafe void SetAudioFormat()
         {
-            _audioFormat.SampleRate = 48000;
+            _audioFormat.SampleRate = 44100;
             _audioFormat.Channels = 2;
             _audioFormat.BitsPerSample = 16;
-            _numSamples = (int)((ff.format_context->duration / (float)ffmpeg.AV_TIME_BASE) * 48000 * 2);
+            _numSamples = (int)((ff.format_context->duration / (float)ffmpeg.AV_TIME_BASE) * 44100 * 2);
         }
 
         public override bool IsFinished => _isFinished;
@@ -293,7 +292,7 @@ namespace SharpAudio.Codec.Mp3
             try
             {
                 ff.av_dst_frame = ffmpeg.av_frame_alloc();
-                ff.av_dst_frame->sample_rate = 48000;
+                ff.av_dst_frame->sample_rate = 44100;
                 ff.av_dst_frame->format = (int)AVSampleFormat.AV_SAMPLE_FMT_S16;
                 ff.av_dst_frame->channels = 2;
                 ff.av_dst_frame->channel_layout = (ulong)ffmpeg.av_get_default_channel_layout(ff.av_dst_frame->channels);
