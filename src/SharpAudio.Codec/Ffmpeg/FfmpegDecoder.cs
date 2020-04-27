@@ -6,6 +6,7 @@ using System;
 using FFmpeg.AutoGen;
 using System.IO;
 using System.Threading.Tasks;
+using System.Collections.Generic;
 
 namespace SharpAudio.Codec.Mp3
 {
@@ -147,9 +148,60 @@ namespace SharpAudio.Codec.Mp3
             ff.av_packet = ffmpeg.av_packet_alloc();
             ff.av_src_frame = ffmpeg.av_frame_alloc();
 
-            this.tempSampleBuf = new byte[(int)(_audioFormat.SampleRate * _audioFormat.Channels)];
+            this.tempSampleBuf = new byte[(int)(_audioFormat.SampleRate * _audioFormat.Channels * 2)];
 
             this._slidestream = new CircularBuffer(tempSampleBuf.Length);
+
+            AVDictionaryEntry* tag = null;
+            this._audioMetaData = new AudioMetadata();
+            _audioMetaData.ExtraData = new Dictionary<string, string>();
+
+
+            do
+            {
+                tag = ffmpeg.av_dict_get(ff.format_context->metadata, "", tag, ffmpeg.AV_DICT_IGNORE_SUFFIX);
+
+                if (tag == null)
+                    break;
+
+                var key = Marshal.PtrToStringAuto((IntPtr)tag->key);
+                var val = Marshal.PtrToStringAuto((IntPtr)tag->value);
+
+                switch (key.ToLowerInvariant().Trim())
+                {
+                    case "title":
+                        _audioMetaData.Title = val;
+                        break;
+                    case "artist":
+                    case "artists":
+                    case "author":
+                    case "composer":
+                        if (_audioMetaData.Artists is null)
+                            _audioMetaData.Artists = new List<string>();
+
+                        _audioMetaData.Artists.AddRange(val.Split(',', StringSplitOptions.RemoveEmptyEntries).Select(x => x.Trim()));
+                        break;
+                    case "album":
+                        _audioMetaData.Album = val;
+                        break;
+                    case "genre":
+                        if (_audioMetaData.Genre is null)
+                            _audioMetaData.Genre = new List<string>();
+
+                        _audioMetaData.Genre.AddRange(val.Split(',', StringSplitOptions.RemoveEmptyEntries).Select(x => x.Trim()));
+                        break;
+                    case "year":
+                        _audioMetaData.Year = val;
+                        break;
+                    default:
+                        _audioMetaData.ExtraData.Add(key, val);
+                        break;
+                }
+
+            } while (true);
+
+            if (_audioMetaData.Artists != null)
+                _audioMetaData.Artists = _audioMetaData.Artists.GroupBy(x => x).Select(y => y.First()).ToList();
 
         }
 
@@ -229,10 +281,11 @@ namespace SharpAudio.Codec.Mp3
 
         public override long GetSamples(int samples, ref byte[] data)
         {
+
             int frameFinished = 0;
             int count = 0;
 
-            if (_slidestream.Count > samples)
+            if (_slidestream.Length > samples)
             {
                 data = new byte[samples];
                 _slidestream.Read(data, 0, samples);
@@ -263,7 +316,7 @@ namespace SharpAudio.Codec.Mp3
 
                 _slidestream.Write(tempSampleBuf, 0, count);
 
-                if (_slidestream.Count > samples)
+                if (_slidestream.Length > samples)
                 {
                     break;
                 }

@@ -14,24 +14,22 @@ namespace SharpAudio.Codec
     {
         private Decoder _decoder;
         private BufferChain _chain;
+        private byte[] _silence;
         private AudioBuffer _buffer;
         private byte[] _data;
         private Stopwatch _timer;
-        private readonly TimeSpan SampleQuantum = TimeSpan.FromSeconds(0.5);
-        private readonly TimeSpan SampleWait = TimeSpan.FromSeconds(0.1);
-
-        private static byte[] MakeFourCC(string magic)
-        {
-            return new[] {  (byte)magic[0],
-                            (byte)magic[1],
-                            (byte)magic[2],
-                            (byte)magic[3]};
-        }
+        private readonly TimeSpan SampleQuantum = TimeSpan.FromSeconds(0.1);
+        private readonly TimeSpan SampleWait = TimeSpan.FromMilliseconds(1);
 
         /// <summary>
         /// The audio format of this stream
         /// </summary>
         public AudioFormat Format => _decoder.Format;
+
+        /// <summary>
+        /// The metadata of the decoded data;
+        /// </summary>
+        public AudioMetadata Metadata => _decoder.Metadata;
 
         /// <summary>
         /// The underlying source
@@ -76,16 +74,19 @@ namespace SharpAudio.Codec
         {
             if (stream == null)
                 throw new ArgumentNullException("Stream cannot be null!");
- 
 
-            _decoder = new FFmpegDecoder(stream);
+            IsStreamed = !stream.CanSeek;
 
             Source = engine.CreateSource();
 
+            _decoder = new FFmpegDecoder(stream);
+
             _chain = new BufferChain(engine);
 
-            _decoder.GetSamples(SampleQuantum, ref _data);
-            _chain.QueueData(Source, _data, _decoder.Format);
+            _silence = new byte[(int)(_decoder.Format.Channels * _decoder.Format.SampleRate * SampleQuantum.TotalSeconds)];
+            
+            // Prime the buffer chain with empty data.
+            _chain.QueueData(Source, _silence, Format);
 
             _timer = new Stopwatch();
         }
@@ -97,21 +98,25 @@ namespace SharpAudio.Codec
         {
             Source.Play();
             _timer.Start();
- 
-            var t = Task.Run(() =>
+
+            Task.Factory.StartNew(async () =>
             {
                 while (Source.IsPlaying())
                 {
                     if (Source.BuffersQueued < 3 && !_decoder.IsFinished)
                     {
                         _decoder.GetSamples(SampleQuantum, ref _data);
+
+                        if (_data is null)
+                            _data = _silence;
+
                         _chain.QueueData(Source, _data, Format);
                     }
 
-                    Thread.Sleep(SampleWait);
+                    await Task.Delay(SampleWait);
                 }
                 _timer.Stop();
-            }); 
+            }, TaskCreationOptions.LongRunning | TaskCreationOptions.AttachedToParent);
         }
 
         /// <summary>

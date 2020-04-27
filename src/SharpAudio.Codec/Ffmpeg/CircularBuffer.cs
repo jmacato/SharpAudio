@@ -4,153 +4,201 @@ using System.Diagnostics;
 namespace SharpAudio.Codec.Mp3
 {
     /// <summary>
-    /// A very basic circular buffer implementation
+    /// A thread-safe variable-size circular buffer
     /// </summary>
-    public class CircularBuffer
+    internal class CircularBuffer
     {
-        private readonly byte[] buffer;
-        private readonly object lockObject;
-        private int writePosition;
-        private int readPosition;
-        private int byteCount;
+        private byte[] m_Buffer;
+        private int m_Size;
+        private int m_HeadOffset;
+        private int m_TailOffset;
 
         /// <summary>
-        /// Create a new circular buffer
+        /// Gets the available bytes in the ring buffer
         /// </summary>
-        /// <param name="size">Max buffer size in bytes</param>
-        public CircularBuffer(int size)
+        public int Length
         {
-            buffer = new byte[size];
-            lockObject = new object();
+            get { return m_Size; }
         }
 
         /// <summary>
-        /// Write data to the buffer
+        /// Constructs a new instance of a <see cref="CircularBuffer"/>
         /// </summary>
-        /// <param name="data">Data to write</param>
-        /// <param name="offset">Offset into data</param>
-        /// <param name="count">Number of bytes to write</param>
-        /// <returns>number of bytes written</returns>
-        public int Write(byte[] data, int offset, int count)
+        public CircularBuffer()
         {
-            lock (lockObject)
+            m_Buffer = new byte[2048];
+        }
+
+        /// <summary>
+        /// Constructs a new instance of a <see cref="CircularBuffer"/> with the specified capacity
+        /// </summary>
+        /// <param name="capacity">The number of entries that the <see cref="CircularBuffer"/> can initially contain</param>
+        public CircularBuffer(int capacity)
+        {
+            m_Buffer = new byte[capacity];
+        }
+
+        /// <summary>
+        /// Clears the ring buffer
+        /// </summary>
+        public void Clear()
+        {
+            m_Size = 0;
+            m_HeadOffset = 0;
+            m_TailOffset = 0;
+        }
+
+        /// <summary>
+        /// Clears the specified amount of bytes from the ring buffer
+        /// </summary>
+        /// <param name="size">The amount of bytes to clear from the ring buffer</param>
+        public void Clear(int size)
+        {
+            lock (this)
             {
-                var bytesWritten = 0;
-                if (count > buffer.Length - byteCount)
+                if (size > m_Size)
                 {
-                    count = buffer.Length - byteCount;
+                    size = m_Size;
                 }
-                // write to end
-                int writeToEnd = Math.Min(buffer.Length - writePosition, count);
-                Array.Copy(data, offset, buffer, writePosition, writeToEnd);
-                writePosition += writeToEnd;
-                writePosition %= buffer.Length;
-                bytesWritten += writeToEnd;
-                if (bytesWritten < count)
+
+                if (size == 0)
                 {
-                    Debug.Assert(writePosition == 0);
-                    // must have wrapped round. Write to start
-                    Array.Copy(data, offset + bytesWritten, buffer, writePosition, count - bytesWritten);
-                    writePosition += (count - bytesWritten);
-                    bytesWritten = count;
+                    return;
                 }
-                byteCount += bytesWritten;
-                return bytesWritten;
+
+                m_HeadOffset = (m_HeadOffset + size) % m_Buffer.Length;
+                m_Size -= size;
+
+                if (m_Size == 0)
+                {
+                    m_HeadOffset = 0;
+                    m_TailOffset = 0;
+                }
+
+                return;
             }
         }
 
         /// <summary>
-        /// Read from the buffer
+        /// Extends the capacity of the ring buffer
         /// </summary>
-        /// <param name="data">Buffer to read into</param>
-        /// <param name="offset">Offset into read buffer</param>
-        /// <param name="count">Bytes to read</param>
-        /// <returns>Number of bytes actually read</returns>
-        public int Read(byte[] data, int offset, int count)
+        private void SetCapacity(int capacity)
         {
-            lock (lockObject)
+            byte[] buffer = new byte[capacity];
+
+            if (m_Size > 0)
             {
-                if (count > byteCount)
+                if (m_HeadOffset < m_TailOffset)
                 {
-                    count = byteCount;
-                }
-                int bytesRead = 0;
-                int readToEnd = Math.Min(buffer.Length - readPosition, count);
-                Array.Copy(buffer, readPosition, data, offset, readToEnd);
-                bytesRead += readToEnd;
-                readPosition += readToEnd;
-                readPosition %= buffer.Length;
-
-                if (bytesRead < count)
-                {
-                    // must have wrapped round. Read from start
-                    Debug.Assert(readPosition == 0);
-                    Array.Copy(buffer, readPosition, data, offset + bytesRead, count - bytesRead);
-                    readPosition += (count - bytesRead);
-                    bytesRead = count;
-                }
-
-                byteCount -= bytesRead;
-                Debug.Assert(byteCount >= 0);
-                return bytesRead;
-            }
-        }
-
-        /// <summary>
-        /// Maximum length of this circular buffer
-        /// </summary>
-        public int MaxLength => buffer.Length;
-
-        /// <summary>
-        /// Number of bytes currently stored in the circular buffer
-        /// </summary>
-        public int Count
-        {
-            get
-            {
-                lock (lockObject)
-                {
-                    return byteCount;
-                }
-            }
-        }
-
-        /// <summary>
-        /// Resets the buffer
-        /// </summary>
-        public void Reset()
-        {
-            lock (lockObject)
-            {
-                ResetInner();
-            }
-        }
-
-        private void ResetInner()
-        {
-            byteCount = 0;
-            readPosition = 0;
-            writePosition = 0;
-        }
-
-        /// <summary>
-        /// Advances the buffer, discarding bytes
-        /// </summary>
-        /// <param name="count">Bytes to advance</param>
-        public void Advance(int count)
-        {
-            lock (lockObject)
-            {
-                if (count >= byteCount)
-                {
-                    ResetInner();
+                    Buffer.BlockCopy(m_Buffer, m_HeadOffset, buffer, 0, m_Size);
                 }
                 else
                 {
-                    byteCount -= count;
-                    readPosition += count;
-                    readPosition %= MaxLength;
+                    Buffer.BlockCopy(m_Buffer, m_HeadOffset, buffer, 0, m_Buffer.Length - m_HeadOffset);
+                    Buffer.BlockCopy(m_Buffer, 0, buffer, m_Buffer.Length - m_HeadOffset, m_TailOffset);
                 }
+            }
+
+            m_Buffer = buffer;
+            m_HeadOffset = 0;
+            m_TailOffset = m_Size;
+        }
+
+
+        /// <summary>
+        /// Writes a sequence of bytes to the ring buffer
+        /// </summary>
+        /// <param name="buffer">A byte array containing the data to write</param>
+        /// <param name="index">The zero-based byte offset in <paramref name="buffer" /> from which to begin copying bytes to the ring buffer</param>
+        /// <param name="count">The number of bytes to write</param>
+        public void Write<T>(T[] buffer, int index, int count)
+        {
+            if (count == 0)
+            {
+                return;
+            }
+
+            lock (this)
+            {
+                if ((m_Size + count) > m_Buffer.Length)
+                {
+                    SetCapacity((m_Size + count + 2047) & ~2047);
+                }
+
+                if (m_HeadOffset < m_TailOffset)
+                {
+                    int tailLength = m_Buffer.Length - m_TailOffset;
+
+                    if (tailLength >= count)
+                    {
+                        Buffer.BlockCopy(buffer, index, m_Buffer, m_TailOffset, count);
+                    }
+                    else
+                    {
+                        Buffer.BlockCopy(buffer, index, m_Buffer, m_TailOffset, tailLength);
+                        Buffer.BlockCopy(buffer, index + tailLength, m_Buffer, 0, count - tailLength);
+                    }
+                }
+                else
+                {
+                    Buffer.BlockCopy(buffer, index, m_Buffer, m_TailOffset, count);
+                }
+
+                m_Size += count;
+                m_TailOffset = (m_TailOffset + count) % m_Buffer.Length;
+            }
+        }
+
+        /// <summary>
+        /// Reads a sequence of bytes from the ring buffer and advances the position within the ring buffer by the number of bytes read
+        /// </summary>
+        /// <param name="buffer">The buffer to write the data into</param>
+        /// <param name="index">The zero-based byte offset in <paramref name="buffer" /> at which the read bytes will be placed</param>
+        /// <param name="count">The maximum number of bytes to read</param>
+        /// <returns>The total number of bytes read into the buffer. This might be less than the number of bytes requested if that number of bytes are not currently available, or zero if the ring buffer is empty</returns>
+        public int Read<T>(T[] buffer, int index, int count)
+        {
+            lock (this)
+            {
+                if (count > m_Size)
+                {
+                    count = m_Size;
+                }
+
+                if (count == 0)
+                {
+                    return 0;
+                }
+
+                if (m_HeadOffset < m_TailOffset)
+                {
+                    Buffer.BlockCopy(m_Buffer, m_HeadOffset, buffer, index, count);
+                }
+                else
+                {
+                    int tailLength = m_Buffer.Length - m_HeadOffset;
+
+                    if (tailLength >= count)
+                    {
+                        Buffer.BlockCopy(m_Buffer, m_HeadOffset, buffer, index, count);
+                    }
+                    else
+                    {
+                        Buffer.BlockCopy(m_Buffer, m_HeadOffset, buffer, index, tailLength);
+                        Buffer.BlockCopy(m_Buffer, 0, buffer, index + tailLength, count - tailLength);
+                    }
+                }
+
+                m_Size -= count;
+                m_HeadOffset = (m_HeadOffset + count) % m_Buffer.Length;
+
+                if (m_Size == 0)
+                {
+                    m_HeadOffset = 0;
+                    m_TailOffset = 0;
+                }
+
+                return count;
             }
         }
     }

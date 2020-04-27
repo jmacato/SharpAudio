@@ -5,6 +5,7 @@ namespace SharpAudio.Codec
     public abstract class Decoder
     {
         protected AudioFormat _audioFormat;
+        protected AudioMetadata _audioMetaData;
         protected int _numSamples = 0;
         protected int _readSize;
 
@@ -12,6 +13,11 @@ namespace SharpAudio.Codec
         /// The format of the decoded data
         /// </summary>
         public AudioFormat Format => _audioFormat;
+
+        /// <summary>
+        /// The metadata of the decoded data;
+        /// </summary>
+        public AudioMetadata Metadata => _audioMetaData;
 
         /// <summary>
         /// Specifies the length of the decoded data. If not available returns 0

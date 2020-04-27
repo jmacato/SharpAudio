@@ -5,6 +5,7 @@ using System.Threading;
 using CommandLine;
 using System.Collections.Generic;
 using SharpAudio.Codec.Mp3;
+using System.Linq;
 
 namespace SharpAudio.Sample
 {
@@ -35,19 +36,23 @@ namespace SharpAudio.Sample
             }
 
             foreach (var file in opts.InputFiles)
-            {                
+            {
                 var soundStream = new SoundStream(File.OpenRead(file), engine);
 
                 soundStream.Volume = opts.Volume / 100.0f;
 
                 soundStream.Play();
 
-                Console.WriteLine("Playing file with duration: " + soundStream.Duration);
-
                 while (soundStream.IsPlaying)
                 {
-                    Thread.Sleep(100);
+                    var xx = string.Join(", ", soundStream.Metadata.Artists ?? new List<string>());
+
+                    Console.Write($"Playing [{soundStream.Metadata.Title ?? Path.GetFileNameWithoutExtension(file)}] by [{(xx.Length > 0 ? xx : "Unknown")}] {soundStream.Position}/{(soundStream.Duration.TotalSeconds < 0 ? "\u221E" : soundStream.Duration.ToString())}\r");
+
+                    Thread.Sleep(10);
                 }
+
+                Console.Write("\n");
             }
         }
     }
