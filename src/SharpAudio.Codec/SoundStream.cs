@@ -11,6 +11,7 @@ namespace SharpAudio.Codec
 {
     public sealed class SoundStream : IDisposable, INotifyPropertyChanged
     {
+        private bool _stopped;
         private Decoder _decoder;
         private BufferChain _chain;
         private byte[] _silence;
@@ -99,18 +100,19 @@ namespace SharpAudio.Codec
         /// </summary>
         public void Play()
         {
+            _stopped = false;
             Source.Play();
             _timer.Start();
 
             Task.Factory.StartNew(async () =>
             {
-                while (Source.IsPlaying())
+                while (!_stopped && Source.IsPlaying())
                 {
                     if (Source.BuffersQueued < 3 && !_decoder.IsFinished)
                     {
                         _decoder.GetSamples(SampleQuantum, ref _data);
-                        
-                         if (_data is null)
+
+                        if (_data is null)
                             _data = _silence;
 
                         _chain.QueueData(Source, _data, Format);
@@ -128,6 +130,7 @@ namespace SharpAudio.Codec
         /// </summary>
         public void Stop()
         {
+            _stopped = true;
             Source.Stop();
             _timer.Stop();
         }
