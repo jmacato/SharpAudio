@@ -29,6 +29,7 @@ namespace SharpAudio.Codec
         /// Wether or not the decoder reached the end of data
         /// </summary>
         public abstract bool IsFinished { get; }
+        public abstract TimeSpan Position { get; }
 
         public event PropertyChangedEventHandler PropertyChanged;
 
@@ -63,6 +64,5 @@ namespace SharpAudio.Codec
         }
  
         public abstract void TrySeek(TimeSpan time);
-
-    }
+     }
 }

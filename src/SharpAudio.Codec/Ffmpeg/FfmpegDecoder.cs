@@ -222,6 +222,8 @@ namespace SharpAudio.Codec.FFMPEG
 
         public override bool IsFinished => _isFinished;
 
+        public override TimeSpan Position => curPos;
+
         public unsafe int DecodeNext(AVCodecContext* avctx, AVFrame* frame, ref int got_frame_ptr, AVPacket* avpkt)
         {
             int ret = 0;
@@ -306,7 +308,15 @@ namespace SharpAudio.Codec.FFMPEG
 
                     if (doSeek)
                     {
-                        ffmpeg.av_seek_frame(ff.format_context, stream_index, (long)(targetSeek.TotalSeconds * ffmpeg.AV_TIME_BASE), ffmpeg.AVSEEK_FLAG_ANY);
+                        var k = ff.format_context->duration;
+
+                        var x = (long)(targetSeek.TotalSeconds * ffmpeg.AV_TIME_BASE);
+
+                        Console.WriteLine($"{x}/{k}");
+                        
+                        
+                        
+                        ffmpeg.av_seek_frame(ff.format_context, stream_index, x, ffmpeg.AVSEEK_FLAG_BACKWARD);
 
                         doSeek = false;
                         targetSeek = TimeSpan.Zero;
@@ -317,6 +327,9 @@ namespace SharpAudio.Codec.FFMPEG
                         if (ff.av_packet->stream_index == stream_index)
                         {
                             int len = Decode(ff.av_stream->codec, ff.av_src_frame, ref frameFinished, ff.av_packet);
+                            double pts =(double)(ff.av_src_frame->pts);
+                            pts *= (double)ff.av_stream->codec->time_base.num / (double)ff.av_stream->codec->time_base.den;
+                            curPos = TimeSpan.FromSeconds(pts);
                             if (frameFinished > 0)
                             {
                                 ProcessAudioFrame(ref tempSampleBuf, ref count);
@@ -377,6 +390,7 @@ namespace SharpAudio.Codec.FFMPEG
 
         TimeSpan targetSeek;
         volatile bool doSeek = false;
+        private TimeSpan curPos;
 
         public override void TrySeek(TimeSpan time)
         {
@@ -384,7 +398,9 @@ namespace SharpAudio.Codec.FFMPEG
             {
                 doSeek = true;
                 targetSeek = time;
+                Console.WriteLine(time);
             }
         }
+ 
     }
 }
