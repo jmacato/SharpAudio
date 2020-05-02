@@ -59,12 +59,12 @@ namespace SharpAudio.Codec
         /// <summary>
         /// Duration when provided by the decoder. Otherwise 0
         /// </summary>
-        public TimeSpan Duration { get => _decoder.Duration; set => _decoder.TrySeek(value); }
+        public TimeSpan Duration => _decoder.Duration; 
 
         /// <summary>
         /// Current position inside the stream
         /// </summary>
-        public TimeSpan Position => _timer.Elapsed;
+        public TimeSpan Position { get => _timer.Elapsed; set => _decoder.TrySeek(value); }
 
         /// <summary>
         /// Initializes a new instance of the <see cref="SoundStream"/> class.
@@ -115,7 +115,7 @@ namespace SharpAudio.Codec
                     }
 
                     await Task.Delay(SampleWait);
-                    PropertyChanged?.BeginInvoke(this, new PropertyChangedEventArgs(nameof(Duration)), null, null);
+                    PropertyChanged?.BeginInvoke(this, new PropertyChangedEventArgs(nameof(Position)), null, null);
                 }
                 _timer.Stop();
             }, TaskCreationOptions.LongRunning | TaskCreationOptions.AttachedToParent);
