@@ -1,4 +1,5 @@
-﻿using System;
+﻿using System.ComponentModel;
+using System;
 
 namespace SharpAudio.Codec
 {
@@ -29,6 +30,8 @@ namespace SharpAudio.Codec
         /// </summary>
         public abstract bool IsFinished { get; }
 
+        public event PropertyChangedEventHandler PropertyChanged;
+
         /// <summary>
         /// Reads the specified amount of samples
         /// </summary>
@@ -58,7 +61,8 @@ namespace SharpAudio.Codec
         {
             return GetSamples(_numSamples, ref data);
         }
+ 
+        public abstract void TrySeek(TimeSpan time);
 
-        public bool Probe(ref byte[] fourcc) => false;
     }
 }

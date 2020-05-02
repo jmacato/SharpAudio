@@ -1,6 +1,5 @@
-﻿using SharpAudio.Codec.Mp3;
-using SharpAudio.Codec.Vorbis;
-using SharpAudio.Codec.Wave;
+﻿using System.ComponentModel;
+using SharpAudio.Codec.FFMPEG; 
 using System;
 using System.Diagnostics;
 using System.IO;
@@ -10,7 +9,7 @@ using System.Threading.Tasks;
 
 namespace SharpAudio.Codec
 {
-    public sealed class SoundStream : IDisposable
+    public sealed class SoundStream : IDisposable, INotifyPropertyChanged
     {
         private Decoder _decoder;
         private BufferChain _chain;
@@ -20,6 +19,8 @@ namespace SharpAudio.Codec
         private Stopwatch _timer;
         private readonly TimeSpan SampleQuantum = TimeSpan.FromSeconds(0.1);
         private readonly TimeSpan SampleWait = TimeSpan.FromMilliseconds(1);
+
+        public event PropertyChangedEventHandler PropertyChanged;
 
         /// <summary>
         /// The audio format of this stream
@@ -58,7 +59,7 @@ namespace SharpAudio.Codec
         /// <summary>
         /// Duration when provided by the decoder. Otherwise 0
         /// </summary>
-        public TimeSpan Duration => _decoder.Duration;
+        public TimeSpan Duration { get => _decoder.Duration; set => _decoder.TrySeek(value); }
 
         /// <summary>
         /// Current position inside the stream
@@ -84,7 +85,7 @@ namespace SharpAudio.Codec
             _chain = new BufferChain(engine);
 
             _silence = new byte[(int)(_decoder.Format.Channels * _decoder.Format.SampleRate * SampleQuantum.TotalSeconds)];
-            
+
             // Prime the buffer chain with empty data.
             _chain.QueueData(Source, _silence, Format);
 
@@ -114,6 +115,7 @@ namespace SharpAudio.Codec
                     }
 
                     await Task.Delay(SampleWait);
+                    PropertyChanged?.BeginInvoke(this, new PropertyChangedEventArgs(nameof(Duration)), null, null);
                 }
                 _timer.Stop();
             }, TaskCreationOptions.LongRunning | TaskCreationOptions.AttachedToParent);

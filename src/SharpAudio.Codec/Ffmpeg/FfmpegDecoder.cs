@@ -8,7 +8,7 @@ using System.IO;
 using System.Threading.Tasks;
 using System.Collections.Generic;
 
-namespace SharpAudio.Codec.Mp3
+namespace SharpAudio.Codec.FFMPEG
 {
     public class FFmpegDecoder : Decoder
     {
@@ -45,18 +45,25 @@ namespace SharpAudio.Codec.Mp3
 
         private unsafe long Seek(void* opaque, long offset, int whence)
         {
-            try
+            SeekOrigin origin;
+
+            switch (whence)
             {
-                return whence == ffmpeg.AVSEEK_SIZE ?
-                    targetStream.Length : targetStream.Seek(offset, SeekOrigin.Begin);
+                case ffmpeg.AVSEEK_SIZE:
+                    return targetStream.Length;
+                case 0:
+                case 1:
+                case 2:
+                    origin = (SeekOrigin)whence;
+                    break;
+                default:
+                    return ffmpeg.AVERROR_EOF;
+
             }
-            catch
-            {
-                return ffmpeg.AVERROR_EOF;
-            }
+
+            targetStream.Seek(offset, origin);
+            return targetStream.Position;
         }
-
-
 
         public FFmpegDecoder(Stream src)
         {
@@ -296,6 +303,15 @@ namespace SharpAudio.Codec.Mp3
             {
                 unsafe
                 {
+
+                    if (doSeek)
+                    {
+                        ffmpeg.av_seek_frame(ff.format_context, stream_index, (long)(targetSeek.TotalSeconds * ffmpeg.AV_TIME_BASE), ffmpeg.AVSEEK_FLAG_ANY);
+
+                        doSeek = false;
+                        targetSeek = TimeSpan.Zero;
+                    }
+
                     if (ffmpeg.av_read_frame(ff.format_context, ff.av_packet) >= 0)
                     {
                         if (ff.av_packet->stream_index == stream_index)
@@ -357,6 +373,18 @@ namespace SharpAudio.Codec.Mp3
 
             fixed (AVFrame** x = &ff.av_dst_frame)
                 ffmpeg.av_frame_free(x);
+        }
+
+        TimeSpan targetSeek;
+        volatile bool doSeek = false;
+
+        public override void TrySeek(TimeSpan time)
+        {
+            if (!doSeek & targetStream.CanSeek)
+            {
+                doSeek = true;
+                targetSeek = time;
+            }
         }
     }
 }

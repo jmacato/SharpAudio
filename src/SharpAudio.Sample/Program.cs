@@ -4,7 +4,7 @@ using System.IO;
 using System.Threading;
 using CommandLine;
 using System.Collections.Generic;
-using SharpAudio.Codec.Mp3;
+using SharpAudio.Codec.FFMPEG;
 using System.Linq;
 
 namespace SharpAudio.Sample

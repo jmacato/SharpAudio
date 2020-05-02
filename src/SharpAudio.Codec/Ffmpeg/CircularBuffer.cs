@@ -1,7 +1,7 @@
 using System;
 using System.Diagnostics;
 
-namespace SharpAudio.Codec.Mp3
+namespace SharpAudio.Codec.FFMPEG
 {
     /// <summary>
     /// A thread-safe variable-size circular buffer
