@@ -1,5 +1,5 @@
 ﻿using System.ComponentModel;
-using SharpAudio.Codec.FFMPEG; 
+using SharpAudio.Codec.FFMPEG;
 using System;
 using System.Diagnostics;
 using System.IO;
@@ -59,12 +59,14 @@ namespace SharpAudio.Codec
         /// <summary>
         /// Duration when provided by the decoder. Otherwise 0
         /// </summary>
-        public TimeSpan Duration => _decoder.Duration; 
+        public TimeSpan Duration => _decoder.Duration;
 
         /// <summary>
         /// Current position inside the stream
         /// </summary>
-        public TimeSpan Position { get => _timer.Elapsed; set => _decoder.TrySeek(value); }
+        public TimeSpan Position => _decoder.Position;
+
+        public void TrySeek(TimeSpan seek) => _decoder.TrySeek(seek);
 
         /// <summary>
         /// Initializes a new instance of the <see cref="SoundStream"/> class.
@@ -107,15 +109,15 @@ namespace SharpAudio.Codec
                     if (Source.BuffersQueued < 3 && !_decoder.IsFinished)
                     {
                         _decoder.GetSamples(SampleQuantum, ref _data);
-
-                        if (_data is null)
+                        
+                         if (_data is null)
                             _data = _silence;
 
                         _chain.QueueData(Source, _data, Format);
                     }
 
                     await Task.Delay(SampleWait);
-                    PropertyChanged?.BeginInvoke(this, new PropertyChangedEventArgs(nameof(Position)), null, null);
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Position)));
                 }
                 _timer.Stop();
             }, TaskCreationOptions.LongRunning | TaskCreationOptions.AttachedToParent);
