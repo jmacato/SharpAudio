@@ -327,8 +327,9 @@ namespace SharpAudio.Codec.FFMPEG
                         if (ff.av_packet->stream_index == stream_index)
                         {
                             int len = Decode(ff.av_stream->codec, ff.av_src_frame, ref frameFinished, ff.av_packet);
-                            double pts =(double)(ff.av_src_frame->pts);
-                            pts *= (double)ff.av_stream->codec->time_base.num / (double)ff.av_stream->codec->time_base.den;
+                            double pts = (double)(ff.av_src_frame->pts);
+                            pts *= (double)ff.av_stream->time_base.num / (double)ff.av_stream->time_base.den;
+
                             curPos = TimeSpan.FromSeconds(pts);
                             if (frameFinished > 0)
                             {
