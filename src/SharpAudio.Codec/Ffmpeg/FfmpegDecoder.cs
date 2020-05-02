@@ -171,8 +171,8 @@ namespace SharpAudio.Codec.FFMPEG
                 if (tag == null)
                     break;
 
-                var key = Marshal.PtrToStringAuto((IntPtr)tag->key);
-                var val = Marshal.PtrToStringAuto((IntPtr)tag->value);
+                var key = Marshal.PtrToStringAnsi((IntPtr)tag->key);
+                var val = Marshal.PtrToStringAnsi((IntPtr)tag->value);
 
                 switch (key.ToLowerInvariant().Trim())
                 {
