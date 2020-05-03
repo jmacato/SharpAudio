@@ -310,18 +310,13 @@ namespace SharpAudio.Codec.FFMPEG
 
                     if (doSeek)
                     {
-
-                        var k = (double)ff.format_context->duration;
-
-                        Console.WriteLine($"Got {seekTimeTarget}");
-                        var y = ffmpeg.av_q2d(ff.av_codec->time_base);
-                        var seek = (long)(seekTimeTarget.TotalSeconds / y);
+                        var seek = (long)(seekTimeTarget.TotalSeconds * ffmpeg.AV_TIME_BASE);
                         seek += ff.av_stream->start_time;
-                        Console.WriteLine($"{seek}/{ff.format_context->duration} {seek / k}");
 
                         ffmpeg.av_seek_frame(ff.format_context, stream_index, seek, ffmpeg.AVSEEK_FLAG_BACKWARD);
                         ffmpeg.avcodec_flush_buffers(ff.av_stream->codec);
                         ff.av_packet = ffmpeg.av_packet_alloc();
+
                         doSeek = false;
                         seekTimeTarget = TimeSpan.Zero;
                     }
@@ -331,8 +326,8 @@ namespace SharpAudio.Codec.FFMPEG
                         if (ff.av_packet->stream_index == stream_index)
                         {
                             int len = Decode(ff.av_stream->codec, ff.av_src_frame, ref frameFinished, ff.av_packet);
-                            double pts = (double)(ff.av_src_frame->pts);
-                            pts *= (double)ff.av_stream->time_base.num / (double)ff.av_stream->time_base.den;
+                            double pts = ff.av_src_frame->pts;
+                            pts *= ff.av_stream->time_base.num / (double)ff.av_stream->time_base.den;
 
                             curPos = TimeSpan.FromSeconds(pts);
                             if (frameFinished > 0)
