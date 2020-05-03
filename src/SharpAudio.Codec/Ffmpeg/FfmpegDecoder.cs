@@ -303,23 +303,26 @@ namespace SharpAudio.Codec.FFMPEG
 
             do
             {
+                if (_isFinished) return 0;
+
                 unsafe
                 {
 
                     if (doSeek)
                     {
-                        var k = ff.format_context->duration;
-
-                        var x = (long)(targetSeek.TotalSeconds * ffmpeg.AV_TIME_BASE);
-
-                        Console.WriteLine($"{x}/{k}");
                         
-                        
-                        
-                        ffmpeg.av_seek_frame(ff.format_context, stream_index, x, ffmpeg.AVSEEK_FLAG_BACKWARD);
+                        var k = (double)ff.format_context->duration;
 
+                        Console.WriteLine($"Got {seekTimeTarget}");
+
+                        var x = (long)(seekTimeTarget.TotalSeconds * ffmpeg.AV_TIME_BASE);
+                        Console.WriteLine($"{x}/{ff.format_context->duration} {x / k}");
+
+                        ffmpeg.av_seek_frame(ff.format_context, stream_index, (long)x, ffmpeg.AVSEEK_FLAG_ANY | ffmpeg.AVSEEK_FLAG_BACKWARD);
+                        ffmpeg.avcodec_flush_buffers(ff.av_stream->codec);
+                        ff.av_packet = ffmpeg.av_packet_alloc();
                         doSeek = false;
-                        targetSeek = TimeSpan.Zero;
+                        seekTimeTarget = TimeSpan.Zero;
                     }
 
                     if (ffmpeg.av_read_frame(ff.format_context, ff.av_packet) >= 0)
@@ -389,7 +392,7 @@ namespace SharpAudio.Codec.FFMPEG
                 ffmpeg.av_frame_free(x);
         }
 
-        TimeSpan targetSeek;
+        TimeSpan seekTimeTarget;
         volatile bool doSeek = false;
         private TimeSpan curPos;
 
@@ -398,10 +401,10 @@ namespace SharpAudio.Codec.FFMPEG
             if (!doSeek & targetStream.CanSeek)
             {
                 doSeek = true;
-                targetSeek = time;
+                seekTimeTarget = time;
                 Console.WriteLine(time);
             }
         }
- 
+
     }
 }

@@ -152,6 +152,10 @@ namespace SharpAudio.Codec
                         }
 
                         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Position)));
+
+                        if (!Source.IsPlaying() || _decoder.IsFinished)
+                            currentState = SoundState.Stop;
+
                         break;
 
                     case SoundState.Paused:
@@ -164,9 +168,6 @@ namespace SharpAudio.Codec
                 }
 
                 await Task.Delay(SampleWait);
-
-                if (!Source.IsPlaying() && _decoder.IsFinished )
-                    currentState = SoundState.Stop;
 
             } while (currentState != SoundState.Stop);
 
