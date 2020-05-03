@@ -310,15 +310,16 @@ namespace SharpAudio.Codec.FFMPEG
 
                     if (doSeek)
                     {
-                        
+
                         var k = (double)ff.format_context->duration;
 
                         Console.WriteLine($"Got {seekTimeTarget}");
+                        var y = ffmpeg.av_q2d(ff.av_codec->time_base);
+                        var seek = (long)(seekTimeTarget.TotalSeconds / y);
+                        seek += ff.av_stream->start_time;
+                        Console.WriteLine($"{seek}/{ff.format_context->duration} {seek / k}");
 
-                        var x = (long)(seekTimeTarget.TotalSeconds * ffmpeg.AV_TIME_BASE);
-                        Console.WriteLine($"{x}/{ff.format_context->duration} {x / k}");
-
-                        ffmpeg.av_seek_frame(ff.format_context, stream_index, (long)x, ffmpeg.AVSEEK_FLAG_ANY | ffmpeg.AVSEEK_FLAG_BACKWARD);
+                        ffmpeg.av_seek_frame(ff.format_context, stream_index, seek, ffmpeg.AVSEEK_FLAG_BACKWARD);
                         ffmpeg.avcodec_flush_buffers(ff.av_stream->codec);
                         ff.av_packet = ffmpeg.av_packet_alloc();
                         doSeek = false;
