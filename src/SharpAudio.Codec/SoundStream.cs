@@ -124,7 +124,8 @@ namespace SharpAudio.Codec
             PreparePlay,
             Playing,
             Paused,
-            Stop
+            Stopping,
+            Stopped
         }
 
         private async Task MainLoop()
@@ -154,7 +155,7 @@ namespace SharpAudio.Codec
                         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Position)));
 
                         if (!Source.IsPlaying() || _decoder.IsFinished)
-                            currentState = SoundState.Stop;
+                            currentState = SoundState.Stopping;
 
                         break;
 
@@ -169,11 +170,11 @@ namespace SharpAudio.Codec
 
                 await Task.Delay(SampleWait);
 
-            } while (currentState != SoundState.Stop);
+            } while (currentState != SoundState.Stopping);
 
             Source.Stop();
 
-            currentState = SoundState.Idle;
+            currentState = SoundState.Stopped;
         }
 
         /// <summary>
@@ -181,7 +182,7 @@ namespace SharpAudio.Codec
         /// </summary>
         public void Stop()
         {
-            currentState = SoundState.Stop;
+            currentState = SoundState.Stopping;
         }
 
         public void Dispose()
