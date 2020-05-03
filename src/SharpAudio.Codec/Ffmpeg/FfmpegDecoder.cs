@@ -110,7 +110,26 @@ namespace SharpAudio.Codec.FFMPEG
                     stream_index = i;
                     break;
                 }
+                var x = ff.format_context->streams[i]->disposition & ffmpeg.AV_DISPOSITION_ATTACHED_PIC;
+                if (x != 0)
+                {
+                    AVPacket pkt = ff.format_context->streams[i]->attached_pic;
+
+                    break;
+                }
             }
+
+            for (int i = 0; i < ff.format_context->nb_streams; i++)
+            {
+                if ((ff.format_context->streams[i]->disposition & ffmpeg.AV_DISPOSITION_ATTACHED_PIC) != 0)
+                {
+                    AVPacket pkt = ff.format_context->streams[i]->attached_pic;
+                    // In case we wanna get album art from ffmpeg...
+                    ffmpeg.av_packet_unref(&pkt);
+                    break;
+                }
+            }
+
             if (stream_index == -1)
             {
                 throw new FormatException("FFMPEG: Could not retrieve audio stream from IO stream.");
@@ -307,14 +326,12 @@ namespace SharpAudio.Codec.FFMPEG
 
                 unsafe
                 {
-
                     if (doSeek)
                     {
-                        long seek = (long)(seekTimeTarget.TotalSeconds / (ff.av_stream->time_base.num / (double)ff.av_stream->time_base.den));
+                        long seek = (long)(seekTimeTarget.TotalSeconds / ffmpeg.av_q2d(ff.av_stream->time_base));
                         ffmpeg.av_seek_frame(ff.format_context, stream_index, seek, ffmpeg.AVSEEK_FLAG_BACKWARD);
                         ffmpeg.avcodec_flush_buffers(ff.av_stream->codec);
                         ff.av_packet = ffmpeg.av_packet_alloc();
-
                         doSeek = false;
                         seekTimeTarget = TimeSpan.Zero;
                     }

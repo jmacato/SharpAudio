@@ -16,6 +16,7 @@ namespace SharpAudio.Codec
         private byte[] _silence;
         private AudioBuffer _buffer;
         private byte[] _data;
+        private SoundStreamState _CurrentState;
         private readonly TimeSpan SampleQuantum = TimeSpan.FromSeconds(0.1);
         private readonly TimeSpan SampleWait = TimeSpan.FromMilliseconds(1);
 
@@ -39,7 +40,7 @@ namespace SharpAudio.Codec
         /// <summary>
         /// Wether or not the audio is finished
         /// </summary>
-        public bool IsPlaying => currentState == SoundState.Playing;
+        public bool IsPlaying => currentState == SoundStreamState.Playing;
 
         /// <summary>
         /// Wether or not the audio is streamed
@@ -102,45 +103,33 @@ namespace SharpAudio.Codec
 
             switch (currentState)
             {
-                case SoundState.Idle:
-                    currentState = SoundState.PreparePlay;
+                case SoundStreamState.Idle:
+                    currentState = SoundStreamState.PreparePlay;
                     break;
-                case SoundState.PreparePlay:
-                case SoundState.Playing:
-                    currentState = SoundState.Paused;
+                case SoundStreamState.PreparePlay:
+                case SoundStreamState.Playing:
+                    currentState = SoundStreamState.Paused;
                     break;
-                case SoundState.Paused:
-                    currentState = SoundState.Playing;
+                case SoundStreamState.Paused:
+                    currentState = SoundStreamState.Playing;
                     break;
             }
 
         }
 
-        volatile SoundState currentState;
-
-        enum SoundState
-        {
-            Idle,
-            PreparePlay,
-            Playing,
-            Paused,
-            Stopping,
-            Stopped
-        }
+        volatile SoundStreamState currentState;
 
         private async Task MainLoop()
         {
-
             do
             {
-
                 switch (currentState)
                 {
-                    case SoundState.PreparePlay:
+                    case SoundStreamState.PreparePlay:
                         Source.Play();
-                        currentState = SoundState.Playing;
+                        currentState = SoundStreamState.Playing;
                         break;
-                    case SoundState.Playing:
+                    case SoundStreamState.Playing:
 
                         if (Source.BuffersQueued < 3)
                         {
@@ -155,11 +144,11 @@ namespace SharpAudio.Codec
                         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Position)));
 
                         if (!Source.IsPlaying() || _decoder.IsFinished)
-                            currentState = SoundState.Stopping;
+                            currentState = SoundStreamState.Stopping;
 
                         break;
 
-                    case SoundState.Paused:
+                    case SoundStreamState.Paused:
                         if (Source.BuffersQueued < 3)
                         {
                             _data = _silence;
@@ -170,11 +159,11 @@ namespace SharpAudio.Codec
 
                 await Task.Delay(SampleWait);
 
-            } while (currentState != SoundState.Stopping);
+            } while (currentState != SoundStreamState.Stopping);
 
             Source.Stop();
 
-            currentState = SoundState.Stopped;
+            currentState = SoundStreamState.Stopped;
         }
 
         /// <summary>
@@ -182,7 +171,7 @@ namespace SharpAudio.Codec
         /// </summary>
         public void Stop()
         {
-            currentState = SoundState.Stopping;
+            currentState = SoundStreamState.Stopping;
         }
 
         public void Dispose()
