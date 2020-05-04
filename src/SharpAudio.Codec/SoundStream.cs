@@ -6,6 +6,8 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using SharpAudio.SpectrumAnalysis;
+using System.Numerics;
 
 namespace SharpAudio.Codec
 {
@@ -66,6 +68,10 @@ namespace SharpAudio.Codec
         /// </summary>
         public TimeSpan Position => _decoder.Position;
 
+
+        public CircularBuffer SamplesCopyBuf { get; }
+
+
         public void TrySeek(TimeSpan seek) => _decoder.TrySeek(seek);
 
         /// <summary>
@@ -88,10 +94,92 @@ namespace SharpAudio.Codec
 
             _silence = new byte[(int)(_decoder.Format.Channels * _decoder.Format.SampleRate * SampleQuantum.TotalSeconds)];
 
+            SamplesCopyBuf = new CircularBuffer((int)(_decoder.Format.Channels * _decoder.Format.SampleRate));
+
             // Prime the buffer chain with empty data.
             _chain.QueueData(Source, _silence, Format);
 
             Task.Factory.StartNew(MainLoop, TaskCreationOptions.LongRunning | TaskCreationOptions.AttachedToParent);
+        }
+
+        public Action<Complex[]> FFTDataReady;
+
+        private async Task SpectrumLoop()
+        {
+            // Assuming 16 bit PCM, Little-endian, Variable Channels.
+            int fftLength = 2048;
+            int totalCh = _decoder.Format.Channels;
+            int specSamples = fftLength * totalCh * sizeof(short);
+
+            var tempBuf = new byte[specSamples];
+            var smplInt = new byte[totalCh, fftLength * sizeof(short)];
+
+            var samplesShort = new short[totalCh, fftLength];
+
+            var summedSamples = new short[fftLength];
+
+            var counters = new int[totalCh];
+            var complexSamples = new Complex[fftLength];
+
+            var m = (int)Math.Log(fftLength, 2.0);
+
+            int curChByteRaw = 0;
+
+
+            while (true)
+            {
+                await Task.Delay(1);
+
+                if (currentState == SoundStreamState.Playing & SamplesCopyBuf.Length < specSamples) continue;
+                if (FFTDataReady is null) return;
+
+                SamplesCopyBuf.Read(tempBuf, 0, specSamples);
+
+                for (int i = 0; i < specSamples; i++)
+                {
+                    smplInt[curChByteRaw, counters[curChByteRaw]] = tempBuf[i];
+                    counters[curChByteRaw]++;
+
+                    curChByteRaw++;
+                    curChByteRaw %= totalCh;
+                }
+
+                Array.Clear(counters, 0, counters.Length);
+
+                for (int ch = 0; ch < totalCh; ch++)
+                {
+                    for (int b = 0; b < fftLength; b += sizeof(short))
+                    {
+                        samplesShort[ch, counters[ch]] = (short)(smplInt[ch, b] + (smplInt[ch, b + 1] << 8));
+                        counters[ch]++;
+                    }
+                }
+
+                Array.Clear(counters, 0, counters.Length);
+
+                for (int ch = 0; ch < totalCh; ch++)
+                {
+                    for (int b = 0; b < fftLength; b++)
+                    {
+                        summedSamples[b] += samplesShort[ch, counters[ch]];
+                        counters[ch]++;
+                    }
+                }
+
+                Array.Clear(counters, 0, counters.Length);
+
+                for (int i = 0; i < summedSamples.Length; i++)
+                {
+                    var windowed_sample = FastFourierTransform.HammingWindow(summedSamples[i], fftLength);
+                    complexSamples[i] = new Complex(windowed_sample, 0);
+                }
+
+                Array.Clear(summedSamples, 0, summedSamples.Length);
+
+                FastFourierTransform.FFT(true, m, complexSamples);
+                FFTDataReady.Invoke(complexSamples);
+
+            }
         }
 
         /// <summary>
@@ -128,7 +216,9 @@ namespace SharpAudio.Codec
                     case SoundStreamState.PreparePlay:
                         Source.Play();
                         currentState = SoundStreamState.Playing;
+                        Task.Factory.StartNew(SpectrumLoop, TaskCreationOptions.LongRunning | TaskCreationOptions.AttachedToParent);
                         break;
+
                     case SoundStreamState.Playing:
 
                         if (Source.BuffersQueued < 3)
@@ -139,6 +229,8 @@ namespace SharpAudio.Codec
                                 _data = _silence;
 
                             _chain.QueueData(Source, _data, Format);
+
+                            SamplesCopyBuf.Write(_data, 0, _data.Length);
                         }
 
                         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Position)));
