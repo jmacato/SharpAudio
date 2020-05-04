@@ -127,10 +127,10 @@ namespace SharpAudio.Codec
                 double yPos = 0;
                 for (int b = 0; b < binsPerPoint; b++)
                 {
-                    yPos += GetYPosLog(fftResults[n + b]);
+                    yPos += fftResults[n + b].Magnitude;
                 }
 
-                processedFFT[n / binsPerPoint] = ((yPos / binsPerPoint) / 65535) * 25;
+                processedFFT[n / binsPerPoint] = ((yPos / binsPerPoint) / 65535) * 20;
             }
 
             return processedFFT;
@@ -160,7 +160,7 @@ namespace SharpAudio.Codec
 
             for (int i = 0; i < summedSamples.Length; i++)
             {
-                cachedWindowVal[i] = FastFourierTransform.HannWindow(i, fftLength);
+                cachedWindowVal[i] = FastFourierTransform.HammingWindow(i, fftLength);
             }
 
             while (true)
@@ -210,7 +210,7 @@ namespace SharpAudio.Codec
 
                 for (int i = 0; i < summedSamples.Length; i++)
                 {
-                    var windowed_sample = summedSamples[i] * cachedWindowVal[i];
+                    var windowed_sample = summedSamples[i] * (cachedWindowVal[i]);
                     complexSamples[i] = new Complex(windowed_sample, 0);
                 }
 
