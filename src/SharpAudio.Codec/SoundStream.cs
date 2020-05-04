@@ -118,7 +118,7 @@ namespace SharpAudio.Codec
             //return intensityDB / minDB;
         }
 
-        private double[] ProcessFFT(Complex[] fftResults, double[] windowMultipliers)
+        private double[] ProcessFFT(Complex[] fftResults)
         {
             var processedFFT = new double[bins / binsPerPoint];
 
@@ -215,12 +215,12 @@ namespace SharpAudio.Codec
 
                 for (int i = 0; i < summedSamples.Length; i++)
                 {
-                    var windowed_sample = summedSamples[i] * (1 + cachedWindowVal[i]);
+                    var windowed_sample = summedSamples[i] * ((1 - cachedWindowVal[0]) + cachedWindowVal[i]);
                     complexSamples[i] = new Complex(windowed_sample, 0);
                 }
 
                 FastFourierTransform.FFT(true, binaryExp, complexSamples);
-                FFTDataReady?.Invoke(this, ProcessFFT(complexSamples, cachedWindowVal));
+                FFTDataReady?.Invoke(this, ProcessFFT(complexSamples));
             }
         }
 
