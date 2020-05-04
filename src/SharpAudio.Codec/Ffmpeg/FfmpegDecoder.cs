@@ -55,8 +55,7 @@ namespace SharpAudio.Codec.FFMPEG
                 case 1:
                 case 2:
                     origin = (SeekOrigin)whence;
-                    Console.WriteLine(origin);
-                    break;
+                     break;
                 default:
                     return ffmpeg.AVERROR_EOF;
 
@@ -414,8 +413,7 @@ namespace SharpAudio.Codec.FFMPEG
             {
                 doSeek = true;
                 seekTimeTarget = time;
-                Console.WriteLine(time);
-            }
+             }
         }
 
     }

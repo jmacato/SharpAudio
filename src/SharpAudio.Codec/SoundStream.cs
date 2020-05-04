@@ -150,8 +150,6 @@ namespace SharpAudio.Codec
                 if (SamplesCopyBuf.Length < specSamples) continue;
                 if (FFTDataReady is null) continue;
 
-                Console.WriteLine("do fft.");
-
                 SamplesCopyBuf.Read(tempBuf, 0, specSamples);
                 Buffer.BlockCopy(tempBuf, 0, rawSamplesShort, 0, rawSamplesShort.Length);
 
@@ -211,8 +209,6 @@ namespace SharpAudio.Codec
         /// </summary>
         public void PlayPause()
         {
-            Console.WriteLine(currentState.ToString());
-
             switch (currentState)
             {
                 case SoundStreamState.Idle:
