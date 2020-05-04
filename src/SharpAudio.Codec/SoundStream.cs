@@ -106,32 +106,32 @@ namespace SharpAudio.Codec
 
         public event EventHandler<double[]> FFTDataReady;
 
-        private int fftLength = 2048;
-        private int bins = 1024;
-        private int binsPerPoint = 2;
+        private int fftLength = 4096;
+        private int bins = 4096;
+        private int binsPerPoint = 1;
         private double minDB = -25;
 
         private double GetYPosLog(Complex complex)
         {
-            double intensityDB = 10 * Math.Log10(complex.Magnitude);
-            if (intensityDB < minDB) intensityDB = minDB;
-            return intensityDB / minDB;
+            return complex.Magnitude;
+            //if (intensityDB < minDB) intensityDB = minDB;
+            //return intensityDB / minDB;
         }
 
-        private double[] ProcessFFT(Complex[] fftResults)
+        private double[] ProcessFFT(Complex[] fftResults, double[] windowMultipliers)
         {
             var processedFFT = new double[bins / binsPerPoint];
 
-            for (int n = 0; n < fftResults.Length / 2; n += binsPerPoint)
+            for (int n = 0; n < fftResults.Length / binsPerPoint; n += binsPerPoint)
             {
                 // averaging out bins
                 double yPos = 0;
                 for (int b = 0; b < binsPerPoint; b++)
                 {
-                    yPos += GetYPosLog(fftResults[n + b]);
+                    yPos += fftResults[n + b].Magnitude;
                 }
 
-                processedFFT[n / binsPerPoint] = yPos / binsPerPoint;
+                processedFFT[n / binsPerPoint] = (yPos / binsPerPoint) * 10;
             }
 
             return processedFFT;
@@ -147,17 +147,17 @@ namespace SharpAudio.Codec
             var tempBuf = new byte[specSamples];
             var rawSamplesShort = new short[totalCh * fftLength];
             var samplesShort = new short[totalCh, fftLength];
-            var summedSamples = new short[fftLength / totalCh];
+
+            var summedSamples = new double[fftLength / totalCh];
             var summedSamplesDouble = new double[fftLength / totalCh];
             var counters = new int[totalCh];
             var complexSamples = new Complex[fftLength];
             var shortDivisor = (double)short.MaxValue;
             var binaryExp = (int)Math.Log(fftLength, 2.0);
 
+            var cachedWindowVal = new double[fftLength];
 
-            var cachedWindowVal = new double[summedSamples.Length];
-
-            for (int i = 0; i < summedSamples.Length; i++)
+            for (int i = 0; i < fftLength; i++)
             {
                 cachedWindowVal[i] = FastFourierTransform.HammingWindow(i, fftLength);
             }
@@ -189,20 +189,26 @@ namespace SharpAudio.Codec
                 Array.Clear(counters, 0, counters.Length);
 
                 // Mixing down
-                for (int ch = 0; ch < 1; ch++)
+                for (int ch = 0; ch < 2; ch++)
                 {
                     for (int b = 0; b < summedSamples.Length; b++)
                     {
-                        summedSamplesDouble[b] += samplesShort[ch, counters[ch]] / shortDivisor;
+                        summedSamplesDouble[b] += samplesShort[ch, counters[ch]];
                         counters[ch]++;
                     }
                 }
 
+                double max = 0;
+
                 // Hard clipping stage
                 for (int b = 0; b < summedSamples.Length; b++)
                 {
-                    var h = summedSamplesDouble[b] * shortDivisor;
-                    summedSamples[b] += (short)Math.Clamp(h, -shortDivisor, shortDivisor);
+                    summedSamples[b] += Math.Clamp(summedSamplesDouble[b] / shortDivisor, -1, 1);
+
+                    if (summedSamples[b] > max)
+                    {
+                        max = summedSamples[b];
+                    }
                 }
 
                 Array.Clear(counters, 0, counters.Length);
@@ -213,8 +219,8 @@ namespace SharpAudio.Codec
                     complexSamples[i] = new Complex(windowed_sample, 0);
                 }
 
-                FastFourierTransform.FFT(true, binaryExp, complexSamples);
-                FFTDataReady?.Invoke(this, ProcessFFT(complexSamples));
+                FastFourierTransform.FFT(true, m, complexSamples);
+                FFTDataReady?.Invoke(this, ProcessFFT(complexSamples, cachedWindowVal));
             }
         }
 
