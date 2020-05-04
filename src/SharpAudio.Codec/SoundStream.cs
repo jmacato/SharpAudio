@@ -130,7 +130,7 @@ namespace SharpAudio.Codec
                     yPos += fftResults[n + b].Magnitude;
                 }
 
-                processedFFT[n / binsPerPoint] = (yPos / binsPerPoint);
+                processedFFT[n / binsPerPoint] = (yPos / binsPerPoint) * 10;
             }
 
             return processedFFT;
@@ -217,7 +217,7 @@ namespace SharpAudio.Codec
                 for (int i = 0; i < summedSamples.Length; i++)
                 {
                     var windowed_sample = summedSamples[i] * cachedWindowVal[i];
-                    complexSamples[i] = new Complex(windowed_sample * 10, 0);
+                    complexSamples[i] = new Complex(windowed_sample, 0);
                 }
 
                 FastFourierTransform.FFT(true, m, complexSamples);
