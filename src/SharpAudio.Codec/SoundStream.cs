@@ -105,23 +105,23 @@ namespace SharpAudio.Codec
 
         public event EventHandler<double[]> FFTDataReady;
 
-        private int fftLength = 2048;
-        private int bins = 1024;
-        private int binsPerPoint = 2;
+        private int fftLength = 4096;
+        private int bins = 4096;
+        private int binsPerPoint = 1;
         private double minDB = -25;
 
         private double GetYPosLog(Complex complex)
         {
-            double intensityDB = 10 * Math.Log10(complex.Magnitude);
-            if (intensityDB < minDB) intensityDB = minDB;
-            return intensityDB / minDB;
+            return complex.Magnitude;
+            //if (intensityDB < minDB) intensityDB = minDB;
+            //return intensityDB / minDB;
         }
 
         private double[] ProcessFFT(Complex[] fftResults)
         {
             var processedFFT = new double[bins / binsPerPoint];
 
-            for (int n = 0; n < fftResults.Length / 2; n += binsPerPoint)
+            for (int n = 0; n < fftResults.Length / binsPerPoint; n += binsPerPoint)
             {
                 // averaging out bins
                 double yPos = 0;
@@ -130,7 +130,7 @@ namespace SharpAudio.Codec
                     yPos += GetYPosLog(fftResults[n + b]);
                 }
 
-                processedFFT[n / binsPerPoint] = yPos / binsPerPoint;
+                processedFFT[n / binsPerPoint] = ((yPos / binsPerPoint) / 65535) * 25;
             }
 
             return processedFFT;
@@ -156,12 +156,11 @@ namespace SharpAudio.Codec
             var shortDivisor = (double)short.MaxValue;
             var m = (int)Math.Log(fftLength, 2.0);
 
-
             var cachedWindowVal = new double[summedSamples.Length];
 
             for (int i = 0; i < summedSamples.Length; i++)
             {
-                cachedWindowVal[i] = FastFourierTransform.HammingWindow(i, fftLength);
+                cachedWindowVal[i] = FastFourierTransform.HannWindow(i, fftLength);
             }
 
             while (true)
@@ -191,7 +190,7 @@ namespace SharpAudio.Codec
                 Array.Clear(counters, 0, counters.Length);
 
                 // Mixing down
-                for (int ch = 0; ch < 1; ch++)
+                for (int ch = 0; ch < 2; ch++)
                 {
                     for (int b = 0; b < summedSamples.Length; b++)
                     {
