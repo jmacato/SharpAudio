@@ -18,7 +18,6 @@ namespace SharpAudio.Codec
         private byte[] _silence;
         private AudioBuffer _buffer;
         private byte[] _data;
-        private SoundStreamState _CurrentState;
         private readonly TimeSpan SampleQuantum = TimeSpan.FromSeconds(0.1);
         private readonly TimeSpan SampleWait = TimeSpan.FromMilliseconds(1);
 
@@ -42,7 +41,7 @@ namespace SharpAudio.Codec
         /// <summary>
         /// Wether or not the audio is finished
         /// </summary>
-        public bool IsPlaying => currentState == SoundStreamState.Playing;
+        public bool IsPlaying => _state == SoundStreamState.Playing;
 
         /// <summary>
         /// Wether or not the audio is streamed
@@ -70,7 +69,9 @@ namespace SharpAudio.Codec
 
 
         public CircularBuffer SamplesCopyBuf { get; }
+        volatile SoundStreamState _state;
 
+        public SoundStreamState State => _state;
 
         public void TrySeek(TimeSpan seek) => _decoder.TrySeek(seek);
 
@@ -145,16 +146,13 @@ namespace SharpAudio.Codec
 
             var tempBuf = new byte[specSamples];
             var rawSamplesShort = new short[totalCh * fftLength];
-
             var samplesShort = new short[totalCh, fftLength];
-
             var summedSamples = new short[fftLength / totalCh];
             var summedSamplesDouble = new double[fftLength / totalCh];
-
             var counters = new int[totalCh];
             var complexSamples = new Complex[fftLength];
             var shortDivisor = (double)short.MaxValue;
-            var m = (int)Math.Log(fftLength, 2.0);
+            var binaryExp = (int)Math.Log(fftLength, 2.0);
 
 
             var cachedWindowVal = new double[summedSamples.Length];
@@ -164,7 +162,7 @@ namespace SharpAudio.Codec
                 cachedWindowVal[i] = FastFourierTransform.HammingWindow(i, fftLength);
             }
 
-            while (true)
+            while (_state == SoundStreamState.Playing)
             {
                 await Task.Delay(SampleWait);
 
@@ -215,7 +213,7 @@ namespace SharpAudio.Codec
                     complexSamples[i] = new Complex(windowed_sample, 0);
                 }
 
-                FastFourierTransform.FFT(true, m, complexSamples);
+                FastFourierTransform.FFT(true, binaryExp, complexSamples);
                 FFTDataReady?.Invoke(this, ProcessFFT(complexSamples));
             }
         }
@@ -225,33 +223,33 @@ namespace SharpAudio.Codec
         /// </summary>
         public void PlayPause()
         {
-            switch (currentState)
+            switch (_state)
             {
                 case SoundStreamState.Idle:
-                    currentState = SoundStreamState.PreparePlay;
+                    _state = SoundStreamState.PreparePlay;
                     break;
                 case SoundStreamState.PreparePlay:
                 case SoundStreamState.Playing:
-                    currentState = SoundStreamState.Paused;
+                    _state = SoundStreamState.Paused;
                     break;
                 case SoundStreamState.Paused:
-                    currentState = SoundStreamState.Playing;
+                    _state = SoundStreamState.Playing;
                     break;
             }
 
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(State)));
         }
 
-        volatile SoundStreamState currentState;
 
         private async Task MainLoop()
         {
             do
             {
-                switch (currentState)
+                switch (_state)
                 {
                     case SoundStreamState.PreparePlay:
                         Source.Play();
-                        currentState = SoundStreamState.Playing;
+                        _state = SoundStreamState.Playing;
                         Task.Factory.StartNew(SpectrumLoop, TaskCreationOptions.LongRunning | TaskCreationOptions.AttachedToParent);
                         break;
 
@@ -271,7 +269,9 @@ namespace SharpAudio.Codec
                         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Position)));
 
                         if (!Source.IsPlaying() || _decoder.IsFinished)
-                            currentState = SoundStreamState.Stopping;
+                        {
+                            _state = SoundStreamState.Stopping;
+                        }
 
                         break;
 
@@ -286,11 +286,13 @@ namespace SharpAudio.Codec
 
                 await Task.Delay(SampleWait);
 
-            } while (currentState != SoundStreamState.Stopping);
+            } while (_state != SoundStreamState.Stopping);
 
             Source.Stop();
 
-            currentState = SoundStreamState.Stopped;
+            _state = SoundStreamState.Stopped;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Position)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(State)));
         }
 
         /// <summary>
@@ -298,7 +300,7 @@ namespace SharpAudio.Codec
         /// </summary>
         public void Stop()
         {
-            currentState = SoundStreamState.Stopping;
+            _state = SoundStreamState.Stopping;
         }
 
         public void Dispose()

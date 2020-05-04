@@ -353,6 +353,10 @@ namespace SharpAudio.Codec.FFMPEG
                     }
                     else
                     {
+                        // Hack just to make sure it always return the full length.
+                        if(curPos != Duration)
+                            curPos = Duration;
+
                         _isFinished = true;
                         return 0;
                     }
