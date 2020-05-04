@@ -219,7 +219,7 @@ namespace SharpAudio.Codec
                     complexSamples[i] = new Complex(windowed_sample, 0);
                 }
 
-                FastFourierTransform.FFT(true, m, complexSamples);
+                FastFourierTransform.FFT(true, binaryExp, complexSamples);
                 FFTDataReady?.Invoke(this, ProcessFFT(complexSamples, cachedWindowVal));
             }
         }
