@@ -117,7 +117,7 @@ namespace SharpAudio.Codec
             //return intensityDB / minDB;
         }
 
-        private double[] ProcessFFT(Complex[] fftResults)
+        private double[] ProcessFFT(Complex[] fftResults, double[] windowMultipliers)
         {
             var processedFFT = new double[bins / binsPerPoint];
 
@@ -130,7 +130,7 @@ namespace SharpAudio.Codec
                     yPos += fftResults[n + b].Magnitude;
                 }
 
-                processedFFT[n / binsPerPoint] = ((yPos / binsPerPoint) / 65535) * 20;
+                processedFFT[n / binsPerPoint] = (yPos / binsPerPoint);
             }
 
             return processedFFT;
@@ -148,7 +148,7 @@ namespace SharpAudio.Codec
 
             var samplesShort = new short[totalCh, fftLength];
 
-            var summedSamples = new short[fftLength / totalCh];
+            var summedSamples = new double[fftLength / totalCh];
             var summedSamplesDouble = new double[fftLength / totalCh];
 
             var counters = new int[totalCh];
@@ -156,9 +156,9 @@ namespace SharpAudio.Codec
             var shortDivisor = (double)short.MaxValue;
             var m = (int)Math.Log(fftLength, 2.0);
 
-            var cachedWindowVal = new double[summedSamples.Length];
+            var cachedWindowVal = new double[fftLength];
 
-            for (int i = 0; i < summedSamples.Length; i++)
+            for (int i = 0; i < fftLength; i++)
             {
                 cachedWindowVal[i] = FastFourierTransform.HammingWindow(i, fftLength);
             }
@@ -194,28 +194,34 @@ namespace SharpAudio.Codec
                 {
                     for (int b = 0; b < summedSamples.Length; b++)
                     {
-                        summedSamplesDouble[b] += samplesShort[ch, counters[ch]] / shortDivisor;
+                        summedSamplesDouble[b] += samplesShort[ch, counters[ch]];
                         counters[ch]++;
                     }
                 }
 
+                double max = 0;
+
                 // Hard clipping stage
                 for (int b = 0; b < summedSamples.Length; b++)
                 {
-                    var h = summedSamplesDouble[b] * shortDivisor;
-                    summedSamples[b] += (short)Math.Clamp(h, -shortDivisor, shortDivisor);
+                    summedSamples[b] += Math.Clamp(summedSamplesDouble[b] / shortDivisor, -1, 1);
+
+                    if (summedSamples[b] > max)
+                    {
+                        max = summedSamples[b];
+                    }
                 }
 
                 Array.Clear(counters, 0, counters.Length);
 
                 for (int i = 0; i < summedSamples.Length; i++)
                 {
-                    var windowed_sample = summedSamples[i] * (cachedWindowVal[i]);
-                    complexSamples[i] = new Complex(windowed_sample, 0);
+                    var windowed_sample = summedSamples[i] * cachedWindowVal[i];
+                    complexSamples[i] = new Complex(windowed_sample * 10, 0);
                 }
 
                 FastFourierTransform.FFT(true, m, complexSamples);
-                FFTDataReady?.Invoke(this, ProcessFFT(complexSamples));
+                FFTDataReady?.Invoke(this, ProcessFFT(complexSamples, cachedWindowVal));
             }
         }
 
