@@ -102,9 +102,39 @@ namespace SharpAudio.Codec
             Task.Factory.StartNew(MainLoop, TaskCreationOptions.LongRunning | TaskCreationOptions.AttachedToParent);
         }
 
-        public Action<Complex[]> FFTDataReady;
+        public event EventHandler<double[]> FFTDataReady;
 
         // static int hackhack = 0;
+
+        private int bins = 4096;
+        private int binsPerPoint = 2;
+        private double minDB = -25;
+
+        private double GetYPosLog(Complex complex)
+        {
+            double intensityDB = 10 * Math.Log10(complex.Magnitude);
+            if (intensityDB < minDB) intensityDB = minDB;
+            return Math.Clamp(intensityDB / minDB, 0.0, 1.0);
+        }
+
+        private double[] ProcessFFT(Complex[] fftResults)
+        {
+            var processedFFT = new double[bins / binsPerPoint];
+
+            for (int n = 0; n < fftResults.Length / 2; n += binsPerPoint)
+            {
+                // averaging out bins
+                double yPos = 0;
+                for (int b = 0; b < binsPerPoint; b++)
+                {
+                    yPos += GetYPosLog(fftResults[n + b]);
+                }
+
+                processedFFT[n / binsPerPoint] = yPos / binsPerPoint;
+            }
+
+            return processedFFT;
+        }
 
         private async Task SpectrumLoop()
         {
@@ -197,7 +227,7 @@ namespace SharpAudio.Codec
                 Array.Clear(summedSamples, 0, summedSamples.Length);
 
                 FastFourierTransform.FFT(true, m, complexSamples);
-                FFTDataReady.Invoke(complexSamples);
+                FFTDataReady?.Invoke(this, ProcessFFT(complexSamples));
 
             }
 
