@@ -155,11 +155,11 @@ namespace SharpAudio.Codec
             var shortDivisor = (double)short.MaxValue;
             var binaryExp = (int)Math.Log(fftLength, 2.0);
 
-            var cachedWindowVal = new double[fftLength];
+            var cachedWindowVal = new double[summedSamples.Length];
 
-            for (int i = 0; i < fftLength; i++)
+            for (int i = 0; i < summedSamples.Length; i++)
             {
-                cachedWindowVal[i] = FastFourierTransform.HammingWindow(i, fftLength);
+                cachedWindowVal[i] = FastFourierTransform.HammingWindow(i, summedSamples.Length);
             }
 
             while (_state == SoundStreamState.Playing)
