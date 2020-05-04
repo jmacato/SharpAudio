@@ -94,7 +94,7 @@ namespace SharpAudio.Codec
 
             _silence = new byte[(int)(_decoder.Format.Channels * _decoder.Format.SampleRate * SampleQuantum.TotalSeconds)];
 
-            SamplesCopyBuf = new CircularBuffer((int)(_decoder.Format.Channels * _decoder.Format.SampleRate));
+            SamplesCopyBuf = new CircularBuffer((int)(_decoder.Format.Channels * _decoder.Format.SampleRate * sizeof(short)));
 
             // Prime the buffer chain with empty data.
             _chain.QueueData(Source, _silence, Format);
@@ -104,73 +104,95 @@ namespace SharpAudio.Codec
 
         public Action<Complex[]> FFTDataReady;
 
+        // static int hackhack = 0;
+
         private async Task SpectrumLoop()
         {
+            // if(hackhack < 2)
+            // {
+            //     hackhack++;
+            //     return;
+            // }
+
             // Assuming 16 bit PCM, Little-endian, Variable Channels.
-            int fftLength = 2048;
+            int fftLength = 4096;
             int totalCh = _decoder.Format.Channels;
             int specSamples = fftLength * totalCh * sizeof(short);
 
             var tempBuf = new byte[specSamples];
-            var smplInt = new byte[totalCh, fftLength * sizeof(short)];
+            var rawSamplesShort = new short[totalCh * fftLength];
 
             var samplesShort = new short[totalCh, fftLength];
 
-            var summedSamples = new short[fftLength];
+            var summedSamples = new short[fftLength / totalCh];
+            var summedSamplesDouble = new double[fftLength / totalCh];
 
             var counters = new int[totalCh];
             var complexSamples = new Complex[fftLength];
-
+            var shortDivisor = (double)short.MaxValue;
             var m = (int)Math.Log(fftLength, 2.0);
 
             int curChByteRaw = 0;
 
+            var cachedWindowVal = new double[summedSamples.Length];
+
+            for (int i = 0; i < summedSamples.Length; i++)
+            {
+                cachedWindowVal[i] = FastFourierTransform.BlackmannHarrisWindow(i, fftLength);
+            }
+
+            // var writeX = File.OpenWrite("test1.raw");
 
             while (true)
             {
-                await Task.Delay(1);
+                await Task.Delay(SampleWait);
 
-                if (currentState == SoundStreamState.Playing & SamplesCopyBuf.Length < specSamples) continue;
-                if (FFTDataReady is null) return;
+                if (SamplesCopyBuf.Length < specSamples) continue;
+                if (FFTDataReady is null) continue;
+
+                Console.WriteLine("do fft.");
 
                 SamplesCopyBuf.Read(tempBuf, 0, specSamples);
+                Buffer.BlockCopy(tempBuf, 0, rawSamplesShort, 0, rawSamplesShort.Length);
 
-                for (int i = 0; i < specSamples; i++)
+                // Channel de-interleaving
+                for (int i = 0; i < rawSamplesShort.Length; i++)
                 {
-                    smplInt[curChByteRaw, counters[curChByteRaw]] = tempBuf[i];
+                    samplesShort[curChByteRaw, counters[curChByteRaw]] = rawSamplesShort[i];
                     counters[curChByteRaw]++;
-
                     curChByteRaw++;
                     curChByteRaw %= totalCh;
                 }
 
                 Array.Clear(counters, 0, counters.Length);
 
-                for (int ch = 0; ch < totalCh; ch++)
+                // Mixing down
+                for (int ch = 0; ch < 1; ch++)
                 {
-                    for (int b = 0; b < fftLength; b += sizeof(short))
+                    for (int b = 0; b < summedSamples.Length; b++)
                     {
-                        samplesShort[ch, counters[ch]] = (short)(smplInt[ch, b] + (smplInt[ch, b + 1] << 8));
+                        summedSamplesDouble[b] += samplesShort[ch, counters[ch]] / shortDivisor;
                         counters[ch]++;
                     }
                 }
 
-                Array.Clear(counters, 0, counters.Length);
-
-                for (int ch = 0; ch < totalCh; ch++)
+                // Hard clipping stage
+                for (int b = 0; b < summedSamples.Length; b++)
                 {
-                    for (int b = 0; b < fftLength; b++)
-                    {
-                        summedSamples[b] += samplesShort[ch, counters[ch]];
-                        counters[ch]++;
-                    }
+                    var h = summedSamplesDouble[b] * shortDivisor;
+                    summedSamples[b] += (short)Math.Clamp(h, -shortDivisor, shortDivisor);
                 }
+
+                // byte[] result = new byte[summedSamples.Length * sizeof(short)];
+                // Buffer.BlockCopy(summedSamples, 0, result, 0, result.Length);
+
+                // writeX.Write(result, 0, result.Length);
 
                 Array.Clear(counters, 0, counters.Length);
 
                 for (int i = 0; i < summedSamples.Length; i++)
                 {
-                    var windowed_sample = FastFourierTransform.HammingWindow(summedSamples[i], fftLength);
+                    var windowed_sample = summedSamples[i] * cachedWindowVal[i];
                     complexSamples[i] = new Complex(windowed_sample, 0);
                 }
 
@@ -180,6 +202,8 @@ namespace SharpAudio.Codec
                 FFTDataReady.Invoke(complexSamples);
 
             }
+
+            // writeX.Close();
         }
 
         /// <summary>
@@ -268,6 +292,7 @@ namespace SharpAudio.Codec
 
         public void Dispose()
         {
+            FFTDataReady = null;
             _buffer?.Dispose();
             Source.Dispose();
         }
