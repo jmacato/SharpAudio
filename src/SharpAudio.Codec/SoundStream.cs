@@ -20,6 +20,9 @@ namespace SharpAudio.Codec
         private byte[] _data;
         private readonly TimeSpan SampleQuantum = TimeSpan.FromSeconds(0.1);
         private readonly TimeSpan SampleWait = TimeSpan.FromMilliseconds(1);
+        private bool _hasSpectrumData;
+        private byte[] _latestSample;
+        private object _latesSampleLock = new object();
 
         public event PropertyChangedEventHandler PropertyChanged;
 
@@ -67,8 +70,6 @@ namespace SharpAudio.Codec
         /// </summary>
         public TimeSpan Position => _decoder.Position;
 
-
-        public CircularBuffer SamplesCopyBuf { get; }
         volatile SoundStreamState _state;
 
         public SoundStreamState State => _state;
@@ -95,11 +96,8 @@ namespace SharpAudio.Codec
 
             _silence = new byte[(int)(_decoder.Format.Channels * _decoder.Format.SampleRate * SampleQuantum.TotalSeconds)];
 
-            SamplesCopyBuf = new CircularBuffer((int)(_decoder.Format.Channels * _decoder.Format.SampleRate * SampleQuantum.TotalSeconds * sizeof(short)));
-
             // Prime the buffer chain with empty data.
             _chain.QueueData(Source, _silence, Format);
-            SamplesCopyBuf.Write(_silence, 0, _silence.Length);
 
             Task.Factory.StartNew(MainLoop, TaskCreationOptions.LongRunning | TaskCreationOptions.AttachedToParent);
         }
@@ -173,7 +171,6 @@ namespace SharpAudio.Codec
                 await Task.Delay(SampleWait);
 
                 if (_state == SoundStreamState.Paused) continue;
-                if (SamplesCopyBuf.Length < specSamples) continue;
                 if (FFTDataReady is null) continue;
 
                 Array.Clear(tempBuf, 0, tempBuf.Length);
@@ -181,7 +178,24 @@ namespace SharpAudio.Codec
                 Array.Clear(summedSamplesDouble, 0, summedSamplesDouble.Length);
                 Array.Clear(summedSamples, 0, summedSamples.Length);
 
-                SamplesCopyBuf.Read(tempBuf, 0, specSamples);
+                bool gotData = false;
+
+                lock (_latesSampleLock)
+                {
+                    if (_hasSpectrumData)
+                    {
+                        _hasSpectrumData = false;
+                        tempBuf = _latestSample;
+                        gotData = true;
+                    }
+                }
+
+                if (!gotData)
+                {
+                    continue;
+                }
+
+                //SamplesCopyBuf.Read(tempBuf, 0, specSamples);
                 Buffer.BlockCopy(tempBuf, 0, rawSamplesShort, 0, rawSamplesShort.Length);
 
                 // Channel de-interleaving
@@ -264,11 +278,16 @@ namespace SharpAudio.Codec
                         {
                             _decoder.GetSamples(SampleQuantum, ref _data);
 
+                            lock (_latesSampleLock)
+                            {
+                                _latestSample = _data;
+                                _hasSpectrumData = true;
+                            }
+
                             if (_data is null)
                                 _data = _silence;
 
                             _chain.QueueData(Source, _data, Format);
-                            SamplesCopyBuf.Write(_data, 0, _data.Length);
                         }
 
                         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Position)));
@@ -277,7 +296,6 @@ namespace SharpAudio.Codec
                         {
                             _state = SoundStreamState.Stopping;
                         }
-
                         break;
 
                     case SoundStreamState.Paused:
