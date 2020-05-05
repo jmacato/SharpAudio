@@ -129,13 +129,16 @@ namespace SharpAudio.Codec
                 // decibel
                 var result = (((20 * Math.Log10(magnitude)) - MinDbValue) / DbScale) * 1;
 
+                // normalised decibel
+                //var result = (((10 * Math.Log10((complex.Real * complex.Real) + (complex.Imaginary * complex.Imaginary))) - MinDbValue) / DbScale) * 1;
+
                 // linear
                 //var result = (magnitude * 9) * 1;
 
                 // sqrt                
                 //var result = ((Math.Sqrt(magnitude)) * 2) * 1;
 
-                processedFFT[i] = result;
+                processedFFT[i] = Math.Max(0, result);
             }
 
             return processedFFT;
@@ -162,7 +165,7 @@ namespace SharpAudio.Codec
 
             for (int i = 0; i < summedSamples.Length; i++)
             {
-                cachedWindowVal[i] = FastFourierTransform.BlackmannHarrisWindow(i, summedSamples.Length);
+                cachedWindowVal[i] = FastFourierTransform.HammingWindow(i, summedSamples.Length);
             }
 
             while (_state != SoundStreamState.Stopped)
