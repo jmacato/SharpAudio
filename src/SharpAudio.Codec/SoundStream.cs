@@ -106,19 +106,33 @@ namespace SharpAudio.Codec
 
         public event EventHandler<double[]> FFTDataReady;
 
-        private int fftLength = 4096;
+        private int fftLength = 512;
 
         double max = 0.0000000000000001;
+
+        protected const double MinDbValue = -90;
+        protected const double MaxDbValue = 0;
+        protected const double DbScale = (MaxDbValue - MinDbValue);
 
         private double[] ProcessFFT(Complex[] fftResults)
         {
             var processedFFT = new double[fftResults.Length];
 
-            for (int n = 0; n < fftResults.Length; n++)
+            for (int i = 0; i < fftResults.Length; i++)
             {
-                var complex = fftResults[n];
+                var complex = fftResults[i];
 
-                var result = (complex.Real * complex.Real) + (complex.Imaginary * complex.Imaginary);
+                if (complex.Magnitude == 0)
+                {
+                    continue;
+                }
+
+                var result = (((20 * Math.Log10(fftResults[i].Magnitude)) - MinDbValue) / DbScale) * 1;
+
+                if (double.IsNegativeInfinity(result))
+                {
+
+                }
 
                 if (result != 0)
                 {
@@ -131,7 +145,7 @@ namespace SharpAudio.Codec
                     Debug.WriteLine(max);
                 }
 
-                processedFFT[n] = result * (1 / max);
+                processedFFT[i] = result;
             }
 
             return processedFFT;
