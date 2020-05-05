@@ -106,8 +106,8 @@ namespace SharpAudio.Codec
 
         public event EventHandler<double[]> FFTDataReady;
 
-        private int fftLength = 4096;
-        private int bins = 4096;
+        private int fftLength = 512;
+        private int bins = 256;
         private int binsPerPoint = 1;
         private double minDB = -25;
 
@@ -124,7 +124,7 @@ namespace SharpAudio.Codec
         {
             var processedFFT = new double[bins / binsPerPoint];
 
-            for (int n = 0; n < fftResults.Length / binsPerPoint; n += binsPerPoint)
+            for (int n = 0; n < bins / binsPerPoint; n += binsPerPoint)
             {
                 // averaging out bins
                 double yPos = 0;
@@ -215,7 +215,7 @@ namespace SharpAudio.Codec
                     summedSamples[i] += Math.Clamp(summedSamplesDouble[i] / shortDivisor, -1, 1);
 
                     var windowed_sample = summedSamples[i] * cachedWindowVal[i];
-                    
+
                     complexSamples[i] = new Complex(windowed_sample, 0);
                 }
 
