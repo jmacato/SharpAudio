@@ -106,7 +106,7 @@ namespace SharpAudio.Codec
 
         public event EventHandler<double[]> FFTDataReady;
 
-        private int fftLength = 512;
+        private int fftLength = 256;
 
         double max = 0.0000000000000001;
 
@@ -122,28 +122,20 @@ namespace SharpAudio.Codec
             {
                 var complex = fftResults[i];
 
-                if (complex.Magnitude == 0)
+                var magnitude = complex.Magnitude;
+                if (magnitude == 0)
                 {
                     continue;
                 }
 
-                var result = (((20 * Math.Log10(fftResults[i].Magnitude)) - MinDbValue) / DbScale) * 1;
+                // decibel
+                var result = (((20 * Math.Log10(magnitude)) - MinDbValue) / DbScale) * 1;
 
-                if (double.IsNegativeInfinity(result))
-                {
+                // linear
+                //var result = (magnitude * 9) * 1;
 
-                }
-
-                if (result != 0)
-                {
-                    // result = -(10 * Math.Log10(result));
-                }
-
-                if (result > max)
-                {
-                    max = result;
-                    Debug.WriteLine(max);
-                }
+                // sqrt                
+                //var result = ((Math.Sqrt(magnitude)) * 2) * 1;
 
                 processedFFT[i] = result;
             }
@@ -173,7 +165,7 @@ namespace SharpAudio.Codec
 
             for (int i = 0; i < summedSamples.Length; i++)
             {
-                cachedWindowVal[i] = FastFourierTransform.HammingWindow(i, summedSamples.Length);
+                cachedWindowVal[i] = FastFourierTransform.BlackmannHarrisWindow(i, summedSamples.Length);
             }
 
             while (_state != SoundStreamState.Stopped)
