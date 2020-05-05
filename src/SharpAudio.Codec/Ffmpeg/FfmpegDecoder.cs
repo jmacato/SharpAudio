@@ -55,7 +55,7 @@ namespace SharpAudio.Codec.FFMPEG
                 case 1:
                 case 2:
                     origin = (SeekOrigin)whence;
-                     break;
+                    break;
                 default:
                     return ffmpeg.AVERROR_EOF;
 
@@ -88,7 +88,7 @@ namespace SharpAudio.Codec.FFMPEG
 
             ff.format_context = ffmpeg.avformat_alloc_context();
             ff.format_context->pb = ff.ioContext;
-            ff.format_context->flags |= ffmpeg.AVFMT_FLAG_CUSTOM_IO;
+            ff.format_context->flags |= ffmpeg.AVFMT_FLAG_CUSTOM_IO | ffmpeg.AVFMT_FLAG_GENPTS | ffmpeg.AVFMT_FLAG_DISCARD_CORRUPT | ffmpeg.AVFMT_FLAG_FAST_SEEK;
 
             fixed (AVFormatContext** fmt2 = &ff.format_context)
                 if (ffmpeg.avformat_open_input(fmt2, "", null, null) != 0)
@@ -110,25 +110,25 @@ namespace SharpAudio.Codec.FFMPEG
                     stream_index = i;
                     break;
                 }
-                var x = ff.format_context->streams[i]->disposition & ffmpeg.AV_DISPOSITION_ATTACHED_PIC;
-                if (x != 0)
-                {
-                    AVPacket pkt = ff.format_context->streams[i]->attached_pic;
+                // var x = ff.format_context->streams[i]->disposition & ffmpeg.AV_DISPOSITION_ATTACHED_PIC;
+                // if (x != 0)
+                // {
+                //     AVPacket pkt = ff.format_context->streams[i]->attached_pic;
 
-                    break;
-                }
+                //     break;
+                // }
             }
 
-            for (int i = 0; i < ff.format_context->nb_streams; i++)
-            {
-                if ((ff.format_context->streams[i]->disposition & ffmpeg.AV_DISPOSITION_ATTACHED_PIC) != 0)
-                {
-                    AVPacket pkt = ff.format_context->streams[i]->attached_pic;
-                    // In case we wanna get album art from ffmpeg...
-                    ffmpeg.av_packet_unref(&pkt);
-                    break;
-                }
-            }
+            // for (int i = 0; i < ff.format_context->nb_streams; i++)
+            // {
+            //     if ((ff.format_context->streams[i]->disposition & ffmpeg.AV_DISPOSITION_ATTACHED_PIC) != 0)
+            //     {
+            //         AVPacket pkt = ff.format_context->streams[i]->attached_pic;
+            //         // In case we wanna get album art from ffmpeg...
+            //         ffmpeg.av_packet_unref(&pkt);
+            //         break;
+            //     }
+            // }
 
             if (stream_index == -1)
             {
@@ -149,8 +149,8 @@ namespace SharpAudio.Codec.FFMPEG
                 ff.av_codec->channel_layout = (ulong)ffmpeg.av_get_default_channel_layout(ff.av_codec->channels);
             }
 
-            ff.av_codec->request_channel_layout = (ulong)ffmpeg.av_get_default_channel_layout(ff.av_codec->channels);
-            ff.av_codec->request_sample_fmt = _DESIRED_SAMPLE_FORMAT;
+            // ff.av_codec->request_channel_layout = (ulong)ffmpeg.av_get_default_channel_layout(ff.av_codec->channels);
+            // ff.av_codec->request_sample_fmt = _DESIRED_SAMPLE_FORMAT;
 
             SetAudioFormat();
 
@@ -243,70 +243,6 @@ namespace SharpAudio.Codec.FFMPEG
 
         public override TimeSpan Position => curPos;
 
-        public unsafe int DecodeNext(AVCodecContext* avctx, AVFrame* frame, ref int got_frame_ptr, AVPacket* avpkt)
-        {
-            int ret = 0;
-            got_frame_ptr = 0;
-            if ((ret = ffmpeg.avcodec_receive_frame(avctx, frame)) == 0)
-            {
-                //0 on success, otherwise negative error code
-                got_frame_ptr = 1;
-            }
-            else if (ret == ffmpeg.AVERROR(ffmpeg.EAGAIN))
-            {
-                //AVERROR(EAGAIN): input is not accepted in the current state - user must read output with avcodec_receive_packet()
-                //(once all output is read, the packet should be resent, and the call will not fail with EAGAIN)
-                ret = Decode(avctx, frame, ref got_frame_ptr, avpkt);
-            }
-            else if (ret == ffmpeg.AVERROR_EOF)
-            {
-                throw new FormatException("FFMPEG: Unexpected end of stream.");
-            }
-            else if (ret == ffmpeg.AVERROR(ffmpeg.EINVAL))
-            {
-                throw new FormatException("FFMPEG: Invalid data.");
-            }
-            else if (ret == ffmpeg.AVERROR(ffmpeg.ENOMEM))
-            {
-                throw new FormatException("FFMPEG: Out of memory.");
-            }
-            else
-            {
-                throw new FormatException($"FFMPEG: Unknown return code {ret}.");
-            }
-            return ret;
-        }
-        public unsafe int Decode(AVCodecContext* avctx, AVFrame* frame, ref int got_frame_ptr, AVPacket* avpkt)
-        {
-            int ret = 0;
-            got_frame_ptr = 0;
-            if ((ret = ffmpeg.avcodec_send_packet(avctx, avpkt)) == 0)
-            {
-                //0 on success, otherwise negative error code
-                return DecodeNext(avctx, frame, ref got_frame_ptr, avpkt);
-            }
-            else if (ret == ffmpeg.AVERROR(ffmpeg.EAGAIN))
-            {
-                throw new FormatException("input is not accepted in the current state - user must read output with avcodec_receive_frame()(once all output is read, the packet should be resent, and the call will not fail with EAGAIN");
-            }
-            else if (ret == ffmpeg.AVERROR_EOF)
-            {
-                throw new FormatException("AVERROR_EOF: the decoder has been flushed, and no new packets can be sent to it (also returned if more than 1 flush packet is sent");
-            }
-            else if (ret == ffmpeg.AVERROR(ffmpeg.EINVAL))
-            {
-                throw new FormatException("codec not opened, it is an encoder, or requires flush");
-            }
-            else if (ret == ffmpeg.AVERROR(ffmpeg.ENOMEM))
-            {
-                throw new FormatException("Failed to add packet to internal queue, or similar other errors: legitimate decoding errors");
-            }
-            else
-            {
-                throw new FormatException($"FFMPEG: Unknown return code {ret}.");
-            }
-        }
-
         public override long GetSamples(int samples, ref byte[] data)
         {
 
@@ -340,11 +276,26 @@ namespace SharpAudio.Codec.FFMPEG
                     {
                         if (ff.av_packet->stream_index == stream_index)
                         {
-                            int len = Decode(ff.av_stream->codec, ff.av_src_frame, ref frameFinished, ff.av_packet);
-                            double pts = ff.av_src_frame->pts;
-                            pts *= ff.av_stream->time_base.num / (double)ff.av_stream->time_base.den;
 
-                            curPos = TimeSpan.FromSeconds(pts);
+#pragma warning disable 
+                            int res = ffmpeg.avcodec_decode_audio4(ff.av_stream->codec, ff.av_src_frame, &frameFinished, ff.av_packet);
+#pragma warning restore
+
+                            if (res == 0)
+                                continue;
+
+                            if (ff.av_src_frame->pts == ffmpeg.AV_NOPTS_VALUE)
+                            {
+                                continue;
+                                //curPos += TimeSpan.FromSeconds(ff.av_src_frame->nb_samples * ff.av_stream->time_base.num / (double)ff.av_stream->time_base.den);
+                            }
+                            else
+                            {
+                                double pts = ff.av_src_frame->pts;
+                                pts *= ff.av_stream->time_base.num / (double)ff.av_stream->time_base.den;
+                                curPos = TimeSpan.FromSeconds(pts);
+                            }
+
                             if (frameFinished > 0)
                             {
                                 ProcessAudioFrame(ref tempSampleBuf, ref count);
@@ -354,7 +305,7 @@ namespace SharpAudio.Codec.FFMPEG
                     else
                     {
                         // Hack just to make sure it always return the full length.
-                        if(curPos != Duration)
+                        if (curPos != Duration)
                             curPos = Duration;
 
                         _isFinished = true;
@@ -417,7 +368,7 @@ namespace SharpAudio.Codec.FFMPEG
             {
                 doSeek = true;
                 seekTimeTarget = time;
-             }
+            }
         }
 
     }
