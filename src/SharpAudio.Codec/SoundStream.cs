@@ -104,7 +104,7 @@ namespace SharpAudio.Codec
 
         public event EventHandler<double[]> FFTDataReady;
 
-        private int fftLength = 256;
+        private int fftLength = 512;
 
         double max = 0.0000000000000001;
 
