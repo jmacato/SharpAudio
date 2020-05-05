@@ -187,7 +187,7 @@ namespace SharpAudio.Codec
                 {
                     for (int b = 0; b < summedSamples.Length; b++)
                     {
-                        summedSamplesDouble[b] += samplesShort[ch, counters[ch]];
+                        summedSamplesDouble[b] += samplesShort[ch, counters[ch]] / shortDivisor;
                         counters[ch]++;
                     }
                 }
@@ -196,7 +196,7 @@ namespace SharpAudio.Codec
 
                 for (int i = 0; i < summedSamples.Length; i++)
                 {
-                    summedSamples[i] += Math.Clamp(summedSamplesDouble[i] / shortDivisor, -1, 1);
+                    summedSamples[i] += Math.Clamp(summedSamplesDouble[i], -1, 1);
 
                     var windowed_sample = summedSamples[i] * cachedWindowVal[i];
 
@@ -204,6 +204,7 @@ namespace SharpAudio.Codec
                 }
 
                 FastFourierTransform.FFT(true, binaryExp, complexSamples);
+
                 // Only return the N/2 bins since that's the nyquist limit.
                 FFTDataReady?.Invoke(this, ProcessFFT(complexSamples[0..(complexSamples.Length / 2)]));
             }
