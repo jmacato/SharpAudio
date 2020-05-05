@@ -149,7 +149,6 @@ namespace SharpAudio.Codec
             int curChByteRaw = 0;
 
             var tempBuf = new byte[specSamples];
-            var rawSamplesShort = new short[totalCh * fftLength];
             var samplesShort = new short[totalCh, fftLength];
 
             var summedSamples = new double[fftLength / totalCh];
@@ -173,8 +172,6 @@ namespace SharpAudio.Codec
                 if (_state == SoundStreamState.Paused) continue;
                 if (FFTDataReady is null) continue;
 
-                Array.Clear(tempBuf, 0, tempBuf.Length);
-                Array.Clear(rawSamplesShort, 0, rawSamplesShort.Length);
                 Array.Clear(summedSamplesDouble, 0, summedSamplesDouble.Length);
                 Array.Clear(summedSamples, 0, summedSamples.Length);
 
@@ -195,13 +192,12 @@ namespace SharpAudio.Codec
                     continue;
                 }
 
-                //SamplesCopyBuf.Read(tempBuf, 0, specSamples);
-                Buffer.BlockCopy(tempBuf, 0, rawSamplesShort, 0, rawSamplesShort.Length);
+                var rawSamplesShort = tempBuf.AsMemory().AsShorts().Slice(0, fftLength * totalCh);
 
                 // Channel de-interleaving
                 for (int i = 0; i < rawSamplesShort.Length; i++)
                 {
-                    samplesShort[curChByteRaw, counters[curChByteRaw]] = rawSamplesShort[i];
+                    samplesShort[curChByteRaw, counters[curChByteRaw]] = rawSamplesShort.Span[i];
                     counters[curChByteRaw]++;
                     curChByteRaw++;
                     curChByteRaw %= totalCh;
