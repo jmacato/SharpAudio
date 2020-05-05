@@ -107,31 +107,14 @@ namespace SharpAudio.Codec
         public event EventHandler<double[]> FFTDataReady;
 
         private int fftLength = 4096;
-        private int bins = 4096;
-        private int binsPerPoint = 1;
-        private double minDB = -25;
-
-        private double GetYPosLog(Complex complex)
-        {
-            return complex.Magnitude;
-            //if (intensityDB < minDB) intensityDB = minDB;
-            //return intensityDB / minDB;
-        }
 
         private double[] ProcessFFT(Complex[] fftResults)
         {
-            var processedFFT = new double[bins / binsPerPoint];
+            var processedFFT = new double[fftResults.Length];
 
-            for (int n = 0; n < fftResults.Length / binsPerPoint; n += binsPerPoint)
+            for (int n = 0; n < fftResults.Length; n++)
             {
-                // averaging out bins
-                double yPos = 0;
-                for (int b = 0; b < binsPerPoint; b++)
-                {
-                    yPos += fftResults[n + b].Magnitude;
-                }
-
-                processedFFT[n / binsPerPoint] = (yPos / binsPerPoint) * 5;
+                processedFFT[n] = fftResults[n].Magnitude * 5;
             }
 
             return processedFFT;
@@ -162,10 +145,11 @@ namespace SharpAudio.Codec
                 cachedWindowVal[i] = FastFourierTransform.HammingWindow(i, summedSamples.Length);
             }
 
-            while (_state == SoundStreamState.Playing)
+            while (_state != SoundStreamState.Stopped)
             {
                 await Task.Delay(SampleWait);
 
+                if (_state == SoundStreamState.Paused) continue;
                 if (SamplesCopyBuf.Length < specSamples) continue;
                 if (FFTDataReady is null) continue;
 
@@ -220,7 +204,8 @@ namespace SharpAudio.Codec
                 }
 
                 FastFourierTransform.FFT(true, binaryExp, complexSamples);
-                FFTDataReady?.Invoke(this, ProcessFFT(complexSamples));
+                // Only return the N/2 bins since that's the nyquist limit.
+                FFTDataReady?.Invoke(this, ProcessFFT(complexSamples[0..(complexSamples.Length / 2)]));
             }
         }
 
