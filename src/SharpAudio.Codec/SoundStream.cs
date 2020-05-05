@@ -116,7 +116,14 @@ namespace SharpAudio.Codec
 
             for (int n = 0; n < fftResults.Length; n++)
             {
-                var result = fftResults[n].Magnitude * 5;
+                var complex = fftResults[n];
+
+                var result = (complex.Real * complex.Real) + (complex.Imaginary * complex.Imaginary);
+
+                if (result != 0)
+                {
+                    // result = -(10 * Math.Log10(result));
+                }
 
                 if (result > max)
                 {
