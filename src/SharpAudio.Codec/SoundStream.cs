@@ -118,6 +118,8 @@ namespace SharpAudio.Codec
             //return intensityDB / minDB;
         }
 
+        double max = 0.0000000000000001;
+
         private double[] ProcessFFT(Complex[] fftResults)
         {
             var processedFFT = new double[bins / binsPerPoint];
@@ -131,7 +133,15 @@ namespace SharpAudio.Codec
                     yPos += fftResults[n + b].Magnitude;
                 }
 
-                processedFFT[n / binsPerPoint] = (yPos / binsPerPoint) * 5;
+                var result = (yPos / binsPerPoint);
+
+                if (result > max)
+                {
+                    max = result;
+                    Debug.WriteLine(max);
+                }
+
+                processedFFT[n / binsPerPoint] = result * (1 / max);
             }
 
             return processedFFT;
@@ -198,24 +208,14 @@ namespace SharpAudio.Codec
                     }
                 }
 
-                double max = 0;
-
-                // Hard clipping stage
-                for (int b = 0; b < summedSamples.Length; b++)
-                {
-                    summedSamples[b] += Math.Clamp(summedSamplesDouble[b] / shortDivisor, -1, 1);
-
-                    if (summedSamples[b] > max)
-                    {
-                        max = summedSamples[b];
-                    }
-                }
-
                 Array.Clear(counters, 0, counters.Length);
 
                 for (int i = 0; i < summedSamples.Length; i++)
                 {
-                    var windowed_sample = summedSamples[i] * ((1 - cachedWindowVal[0]) + cachedWindowVal[i]);
+                    summedSamples[i] += Math.Clamp(summedSamplesDouble[i] / shortDivisor, -1, 1);
+
+                    var windowed_sample = summedSamples[i] * cachedWindowVal[i];
+                    
                     complexSamples[i] = new Complex(windowed_sample, 0);
                 }
 
