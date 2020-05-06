@@ -45,9 +45,8 @@ namespace SharpAudio.Sample
 
                 while (soundStream.IsPlaying)
                 {
-                    var xx = string.Join(", ", soundStream.Metadata.Artists ?? new List<string>());
-
-                    Console.Write($"Playing [{soundStream.Metadata.Title ?? Path.GetFileNameWithoutExtension(file)}] by [{(xx.Length > 0 ? xx : "Unknown")}] {soundStream.Position}/{(soundStream.Duration.TotalSeconds < 0 ? "\u221E" : soundStream.Duration.ToString())}\r");
+ 
+                    Console.Write($"Playing  {soundStream.Position}/{(soundStream.Duration.TotalSeconds < 0 ? "\u221E" : soundStream.Duration.ToString())}\r");
 
                     Thread.Sleep(10);
                 }

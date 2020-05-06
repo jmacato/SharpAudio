@@ -34,7 +34,7 @@ namespace SharpAudio.Codec
         /// <summary>
         /// The metadata of the decoded data;
         /// </summary>
-        public AudioMetadata Metadata => _decoder.Metadata;
+        // public AudioMetadata Metadata => _decoder.Metadata;
 
         /// <summary>
         /// The underlying source
