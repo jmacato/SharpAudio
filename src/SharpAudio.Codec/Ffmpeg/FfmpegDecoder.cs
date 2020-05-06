@@ -88,7 +88,7 @@ namespace SharpAudio.Codec.FFMPEG
 
             ff.format_context = ffmpeg.avformat_alloc_context();
             ff.format_context->pb = ff.ioContext;
-            ff.format_context->flags |= ffmpeg.AVFMT_FLAG_CUSTOM_IO | ffmpeg.AVFMT_FLAG_GENPTS | ffmpeg.AVFMT_FLAG_DISCARD_CORRUPT | ffmpeg.AVFMT_FLAG_FAST_SEEK;
+            ff.format_context->flags |= ffmpeg.AVFMT_FLAG_CUSTOM_IO | ffmpeg.AVFMT_FLAG_GENPTS | ffmpeg.AVFMT_FLAG_DISCARD_CORRUPT;
 
             fixed (AVFormatContext** fmt2 = &ff.format_context)
                 if (ffmpeg.avformat_open_input(fmt2, "", null, null) != 0)
