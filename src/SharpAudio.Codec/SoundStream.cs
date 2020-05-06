@@ -246,10 +246,12 @@ namespace SharpAudio.Codec
                 case SoundStreamState.Idle:
                     _state = SoundStreamState.PreparePlay;
                     break;
+
                 case SoundStreamState.PreparePlay:
                 case SoundStreamState.Playing:
                     _state = SoundStreamState.Paused;
                     break;
+
                 case SoundStreamState.Paused:
                     _state = SoundStreamState.Playing;
                     break;
@@ -327,6 +329,7 @@ namespace SharpAudio.Codec
 
         public void Dispose()
         {
+            Stop();
             FFTDataReady = null;
             _buffer?.Dispose();
             Source.Dispose();
