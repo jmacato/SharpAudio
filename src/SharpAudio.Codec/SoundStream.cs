@@ -112,7 +112,7 @@ namespace SharpAudio.Codec
         protected const double MaxDbValue = 0;
         protected const double DbScale = (MaxDbValue - MinDbValue);
 
-        private double[,] ProcessFFT(Complex[,] fftResults, int ch, int fftLength)
+        private double[,] FFT2Double(Complex[,] fftResults, int ch, int fftLength)
         {
             // Only return the N/2 bins since that's the nyquist limit.
             var n = fftLength / 2;
@@ -155,36 +155,25 @@ namespace SharpAudio.Codec
             int curChByteRaw = 0;
 
             var tempBuf = new byte[specSamples];
-            var samplesShort = new short[totalCh, fftLength];
-
-            var summedSamples = new double[fftLength / totalCh];
 
             var samplesDouble = new double[totalCh, fftLength];
 
-            var counters = new int[totalCh];
+            var channelCounters = new int[totalCh];
             var complexSamples = new Complex[totalCh, fftLength];
-            var fftOutput = new double[totalCh][];
-
 
             var shortDivisor = (double)short.MaxValue;
             var binaryExp = (int)Math.Log(fftLength, 2.0);
 
-            var cachedWindowVal = new double[summedSamples.Length];
+            var cachedWindowVal = new double[fftLength];
 
-            for (int i = 0; i < summedSamples.Length; i++)
+            for (int i = 0; i < fftLength; i++)
             {
-                cachedWindowVal[i] = FastFourierTransform.HammingWindow(i, summedSamples.Length);
+                cachedWindowVal[i] = FastFourierTransform.HammingWindow(i, fftLength);
             }
 
-            while (_state != SoundStreamState.Stopped)
+            do
             {
-                await Task.Delay(SampleWait);
-
-                if (_state == SoundStreamState.Paused) continue;
-                if (FFTDataReady is null) continue;
-
-                Array.Clear(samplesDouble, 0, samplesDouble.Length);
-                Array.Clear(summedSamples, 0, summedSamples.Length);
+                if (_state == SoundStreamState.Paused || FFTDataReady is null) continue;
 
                 bool gotData = false;
 
@@ -208,39 +197,31 @@ namespace SharpAudio.Codec
                 // Channel de-interleaving
                 for (int i = 0; i < rawSamplesShort.Length; i++)
                 {
-                    samplesDouble[curChByteRaw, counters[curChByteRaw]] = rawSamplesShort.Span[i] / shortDivisor;
-                    counters[curChByteRaw]++;
+                    samplesDouble[curChByteRaw, channelCounters[curChByteRaw]] = rawSamplesShort.Span[i] / shortDivisor;
+                    channelCounters[curChByteRaw]++;
                     curChByteRaw++;
                     curChByteRaw %= totalCh;
                 }
 
-                Array.Clear(counters, 0, counters.Length);
+                Array.Clear(channelCounters, 0, channelCounters.Length);
 
-                // // Mixing down
-                // for (int ch = 0; ch < 2; ch++)
-                // {
-                //     for (int b = 0; b < summedSamples.Length; b++)
-                //     {
-                //         summedSamplesDouble[b] += samplesShort[ch, counters[ch]] / shortDivisor;
-                //         counters[ch]++;
-                //     }
-                // }
-
-                // Array.Clear(counters, 0, counters.Length);
                 for (int curCh = 0; curCh < totalCh; curCh++)
                 {
-                    for (int i = 0; i < samplesDouble.Length; i++)
+                    for (int i = 0; i < fftLength; i++)
                     {
                         var windowed_sample = samplesDouble[curCh, i] * cachedWindowVal[i];
                         complexSamples[curCh, i] = new Complex(windowed_sample, 0);
                     }
 
                     FastFourierTransform.ProcessFFT(true, binaryExp, complexSamples, curCh);
- 
                 }
 
-                FFTDataReady?.Invoke(this, ProcessFFT(complexSamples, totalCh, fftLength));
-            }
+                FFTDataReady?.Invoke(this, FFT2Double(complexSamples, totalCh, fftLength));
+                
+                Array.Clear(samplesDouble, 0, samplesDouble.Length);
+
+                await Task.Delay(SampleWait);
+            } while (_state != SoundStreamState.Stopped);
         }
 
         /// <summary>
