@@ -173,6 +173,8 @@ namespace SharpAudio.Codec
 
             do
             {
+                await Task.Delay(SampleWait);
+
                 if (_state == SoundStreamState.Paused || FFTDataReady is null) continue;
 
                 bool gotData = false;
@@ -217,10 +219,9 @@ namespace SharpAudio.Codec
                 }
 
                 FFTDataReady?.Invoke(this, FFT2Double(complexSamples, totalCh, fftLength));
-                
+
                 Array.Clear(samplesDouble, 0, samplesDouble.Length);
 
-                await Task.Delay(SampleWait);
             } while (_state != SoundStreamState.Stopped);
         }
 
