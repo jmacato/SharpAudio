@@ -230,7 +230,7 @@ namespace SharpAudio.Codec
 
                     for (int i = 0; i < summedSamples.Length; i++)
                     {
-                        var windowed_sample = Math.Clamp(samplesDouble[c, i], -1, 1) * cachedWindowVal[i];
+                        var windowed_sample = samplesDouble[c, i] * cachedWindowVal[i];
                         complexSamples[c][i] = new Complex(windowed_sample, 0);
                     }
 
