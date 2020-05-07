@@ -102,7 +102,7 @@ namespace SharpAudio.Codec
             Task.Factory.StartNew(MainLoop, TaskCreationOptions.LongRunning | TaskCreationOptions.AttachedToParent);
         }
 
-        public event EventHandler<double[]> FFTDataReady;
+        public event EventHandler<double[][]> FFTDataReady;
 
         private int fftLength = 512;
 
@@ -155,9 +155,14 @@ namespace SharpAudio.Codec
             var samplesShort = new short[totalCh, fftLength];
 
             var summedSamples = new double[fftLength / totalCh];
-            var summedSamplesDouble = new double[fftLength / totalCh];
+
+            var samplesDouble = new double[totalCh, fftLength];
+
             var counters = new int[totalCh];
-            var complexSamples = new Complex[fftLength];
+            var complexSamples = new Complex[totalCh][];
+            var fftOutput = new double[totalCh][];
+
+
             var shortDivisor = (double)short.MaxValue;
             var binaryExp = (int)Math.Log(fftLength, 2.0);
 
@@ -175,7 +180,7 @@ namespace SharpAudio.Codec
                 if (_state == SoundStreamState.Paused) continue;
                 if (FFTDataReady is null) continue;
 
-                Array.Clear(summedSamplesDouble, 0, summedSamplesDouble.Length);
+                Array.Clear(samplesDouble, 0, samplesDouble.Length);
                 Array.Clear(summedSamples, 0, summedSamples.Length);
 
                 bool gotData = false;
@@ -200,7 +205,7 @@ namespace SharpAudio.Codec
                 // Channel de-interleaving
                 for (int i = 0; i < rawSamplesShort.Length; i++)
                 {
-                    samplesShort[curChByteRaw, counters[curChByteRaw]] = rawSamplesShort.Span[i];
+                    samplesDouble[curChByteRaw, counters[curChByteRaw]] = rawSamplesShort.Span[i] / shortDivisor;
                     counters[curChByteRaw]++;
                     curChByteRaw++;
                     curChByteRaw %= totalCh;
@@ -208,31 +213,36 @@ namespace SharpAudio.Codec
 
                 Array.Clear(counters, 0, counters.Length);
 
-                // Mixing down
-                for (int ch = 0; ch < 2; ch++)
+                // // Mixing down
+                // for (int ch = 0; ch < 2; ch++)
+                // {
+                //     for (int b = 0; b < summedSamples.Length; b++)
+                //     {
+                //         summedSamplesDouble[b] += samplesShort[ch, counters[ch]] / shortDivisor;
+                //         counters[ch]++;
+                //     }
+                // }
+
+                // Array.Clear(counters, 0, counters.Length);
+                for (int c = 0; c < totalCh; c++)
                 {
-                    for (int b = 0; b < summedSamples.Length; b++)
+                    complexSamples[c] = new Complex[fftLength];
+
+                    for (int i = 0; i < summedSamples.Length; i++)
                     {
-                        summedSamplesDouble[b] += samplesShort[ch, counters[ch]] / shortDivisor;
-                        counters[ch]++;
+                        var windowed_sample = Math.Clamp(samplesDouble[c, i], -1, 1) * cachedWindowVal[i];
+                        complexSamples[c][i] = new Complex(windowed_sample, 0);
                     }
+
+                    FastFourierTransform.FFT(true, binaryExp, complexSamples[c]);
+                    
+                    // Only return the N/2 bins since that's the nyquist limit.
+                    complexSamples[c] = complexSamples[c][0..(complexSamples.Length / 2)];
+
+                    fftOutput[c] = ProcessFFT(complexSamples[c]);
                 }
 
-                Array.Clear(counters, 0, counters.Length);
-
-                for (int i = 0; i < summedSamples.Length; i++)
-                {
-                    summedSamples[i] += Math.Clamp(summedSamplesDouble[i], -1, 1);
-
-                    var windowed_sample = summedSamples[i] * cachedWindowVal[i];
-
-                    complexSamples[i] = new Complex(windowed_sample, 0);
-                }
-
-                FastFourierTransform.FFT(true, binaryExp, complexSamples);
-
-                // Only return the N/2 bins since that's the nyquist limit.
-                FFTDataReady?.Invoke(this, ProcessFFT(complexSamples[0..(complexSamples.Length / 2)]));
+                FFTDataReady?.Invoke(this, fftOutput);
             }
         }
 
