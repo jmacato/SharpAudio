@@ -10,7 +10,7 @@ namespace SharpAudio.SpectrumAnalysis
         /// This computes an in-place complex-to-complex FFT 
         /// x and y are the real and imaginary arrays of 2^m points.
         /// </summary>
-        public static void FFT(bool forward, int m, Complex[] data)
+        public static void ProcessFFT(bool forward, int m, Complex[,] complexSamples, int curCh)
         {
             int n, i, i1, j, k, i2, l, l1, l2;
             double c1, c2, tx, ty, t1, t2, u1, u2, z;
@@ -27,10 +27,10 @@ namespace SharpAudio.SpectrumAnalysis
             {
                 if (i < j)
                 {
-                    tx = data[i].Real;
-                    ty = data[i].Imaginary;
-                    data[i] = data[j]; 
-                    data[j] = new Complex(tx, ty);
+                    tx = complexSamples[curCh, i].Real;
+                    ty = complexSamples[curCh, i].Imaginary;
+                    complexSamples[curCh, i] = complexSamples[curCh, j];
+                    complexSamples[curCh, j] = new Complex(tx, ty);
                 }
                 k = i2;
 
@@ -57,10 +57,10 @@ namespace SharpAudio.SpectrumAnalysis
                     for (i = j; i < n; i += l2)
                     {
                         i1 = i + l1;
-                        t1 = u1 * data[i1].Real - u2 * data[i1].Imaginary;
-                        t2 = u1 * data[i1].Imaginary + u2 * data[i1].Real;
-                        data[i1] = new Complex(data[i].Real - t1, data[i].Imaginary - t2);
-                        data[i] += new Complex(t1, t2);
+                        t1 = u1 * complexSamples[curCh, i1].Real - u2 * complexSamples[curCh, i1].Imaginary;
+                        t2 = u1 * complexSamples[curCh, i1].Imaginary + u2 * complexSamples[curCh, i1].Real;
+                        complexSamples[curCh, i1] = new Complex(complexSamples[curCh, i].Real - t1, complexSamples[curCh, i].Imaginary - t2);
+                        complexSamples[curCh, i] += new Complex(t1, t2);
                     }
                     z = u1 * c1 - u2 * c2;
                     u2 = u1 * c2 + u2 * c1;
@@ -77,7 +77,7 @@ namespace SharpAudio.SpectrumAnalysis
             {
                 for (i = 0; i < n; i++)
                 {
-                    data[i] /= n;
+                    complexSamples[curCh, i] /= n;
                 }
             }
         }
@@ -114,5 +114,6 @@ namespace SharpAudio.SpectrumAnalysis
         {
             return 0.35875 - (0.48829 * Math.Cos((2 * Math.PI * n) / (frameSize - 1))) + (0.14128 * Math.Cos((4 * Math.PI * n) / (frameSize - 1))) - (0.01168 * Math.Cos((6 * Math.PI * n) / (frameSize - 1)));
         }
+
     }
 }

@@ -102,7 +102,7 @@ namespace SharpAudio.Codec
             Task.Factory.StartNew(MainLoop, TaskCreationOptions.LongRunning | TaskCreationOptions.AttachedToParent);
         }
 
-        public event EventHandler<double[][]> FFTDataReady;
+        public event EventHandler<double[,]> FFTDataReady;
 
         private int fftLength = 512;
 
@@ -112,34 +112,37 @@ namespace SharpAudio.Codec
         protected const double MaxDbValue = 0;
         protected const double DbScale = (MaxDbValue - MinDbValue);
 
-        private double[] ProcessFFT(Complex[] fftResults)
+        private double[,] ProcessFFT(Complex[,] fftResults, int ch, int fftLength)
         {
-            var processedFFT = new double[fftResults.Length];
+            // Only return the N/2 bins since that's the nyquist limit.
+            var n = fftLength / 2;
+            var processedFFT = new double[ch, n];
 
-            for (int i = 0; i < fftResults.Length; i++)
-            {
-                var complex = fftResults[i];
-
-                var magnitude = complex.Magnitude;
-                if (magnitude == 0)
+            for (int c = 0; c < ch; c++)
+                for (int i = 0; i < n; i++)
                 {
-                    continue;
+                    var complex = fftResults[c, i];
+
+                    var magnitude = complex.Magnitude;
+                    if (magnitude == 0)
+                    {
+                        continue;
+                    }
+
+                    // decibel
+                    var result = (((20 * Math.Log10(magnitude)) - MinDbValue) / DbScale) * 1;
+
+                    // normalised decibel
+                    //var result = (((10 * Math.Log10((complex.Real * complex.Real) + (complex.Imaginary * complex.Imaginary))) - MinDbValue) / DbScale) * 1;
+
+                    // linear
+                    //var result = (magnitude * 9) * 1;
+
+                    // sqrt                
+                    //var result = ((Math.Sqrt(magnitude)) * 2) * 1;
+
+                    processedFFT[c, i] = Math.Max(0, result);
                 }
-
-                // decibel
-                var result = (((20 * Math.Log10(magnitude)) - MinDbValue) / DbScale) * 1;
-
-                // normalised decibel
-                //var result = (((10 * Math.Log10((complex.Real * complex.Real) + (complex.Imaginary * complex.Imaginary))) - MinDbValue) / DbScale) * 1;
-
-                // linear
-                //var result = (magnitude * 9) * 1;
-
-                // sqrt                
-                //var result = ((Math.Sqrt(magnitude)) * 2) * 1;
-
-                processedFFT[i] = Math.Max(0, result);
-            }
 
             return processedFFT;
         }
@@ -159,7 +162,7 @@ namespace SharpAudio.Codec
             var samplesDouble = new double[totalCh, fftLength];
 
             var counters = new int[totalCh];
-            var complexSamples = new Complex[totalCh][];
+            var complexSamples = new Complex[totalCh, fftLength];
             var fftOutput = new double[totalCh][];
 
 
@@ -224,25 +227,19 @@ namespace SharpAudio.Codec
                 // }
 
                 // Array.Clear(counters, 0, counters.Length);
-                for (int c = 0; c < totalCh; c++)
+                for (int curCh = 0; curCh < totalCh; curCh++)
                 {
-                    complexSamples[c] = new Complex[fftLength];
-
-                    for (int i = 0; i < summedSamples.Length; i++)
+                    for (int i = 0; i < samplesDouble.Length; i++)
                     {
-                        var windowed_sample = samplesDouble[c, i] * cachedWindowVal[i];
-                        complexSamples[c][i] = new Complex(windowed_sample, 0);
+                        var windowed_sample = samplesDouble[curCh, i] * cachedWindowVal[i];
+                        complexSamples[curCh, i] = new Complex(windowed_sample, 0);
                     }
 
-                    FastFourierTransform.FFT(true, binaryExp, complexSamples[c]);
-                    
-                    // Only return the N/2 bins since that's the nyquist limit.
-                    complexSamples[c] = complexSamples[c][0..(complexSamples.Length / 2)];
-
-                    fftOutput[c] = ProcessFFT(complexSamples[c]);
+                    FastFourierTransform.ProcessFFT(true, binaryExp, complexSamples, curCh);
+ 
                 }
 
-                FFTDataReady?.Invoke(this, fftOutput);
+                FFTDataReady?.Invoke(this, ProcessFFT(complexSamples, totalCh, fftLength));
             }
         }
 
