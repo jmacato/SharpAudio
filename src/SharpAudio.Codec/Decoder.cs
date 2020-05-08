@@ -3,7 +3,7 @@ using System;
 
 namespace SharpAudio.Codec
 {
-    public abstract class Decoder
+    public abstract class Decoder : IDisposable
     {
         protected AudioFormat _audioFormat;
         // protected AudioMetadata _audioMetaData;
@@ -23,7 +23,7 @@ namespace SharpAudio.Codec
         /// <summary>
         /// Specifies the length of the decoded data. If not available returns 0
         /// </summary>
-        public virtual TimeSpan Duration => TimeSpan.FromSeconds((float)_numSamples / ( _audioFormat.SampleRate * _audioFormat.Channels));
+        public virtual TimeSpan Duration => TimeSpan.FromSeconds((float)_numSamples / (_audioFormat.SampleRate * _audioFormat.Channels));
 
         /// <summary>
         /// Wether or not the decoder reached the end of data
@@ -32,6 +32,8 @@ namespace SharpAudio.Codec
         public abstract TimeSpan Position { get; }
 
         public event PropertyChangedEventHandler PropertyChanged;
+
+        public abstract void Dispose();
 
         /// <summary>
         /// Reads the specified amount of samples
@@ -62,7 +64,7 @@ namespace SharpAudio.Codec
         {
             return GetSamples(_numSamples, ref data);
         }
- 
+
         public abstract void TrySeek(TimeSpan time);
-     }
+    }
 }

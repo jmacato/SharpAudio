@@ -72,6 +72,7 @@ namespace SharpAudio.Codec.FFMPEG
             Ffmpeg_Initialize();
         }
 
+
         private unsafe void Ffmpeg_Initialize()
         {
             var inputBuffer = (byte*)ffmpeg.av_malloc((ulong)fsStreamSize);
@@ -243,6 +244,8 @@ namespace SharpAudio.Codec.FFMPEG
 
         public override TimeSpan Position => curPos;
 
+        public override TimeSpan Duration => base.Duration;
+
         public override long GetSamples(int samples, ref byte[] data)
         {
 
@@ -370,6 +373,10 @@ namespace SharpAudio.Codec.FFMPEG
                 seekTimeTarget = time;
             }
         }
-
+ 
+        public override void Dispose()
+        {
+            targetStream?.Dispose();
+        }
     }
 }

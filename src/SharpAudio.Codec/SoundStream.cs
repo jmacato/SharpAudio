@@ -320,6 +320,7 @@ namespace SharpAudio.Codec
         {
             Stop();
             FFTDataReady = null;
+            _decoder?.Dispose();
             _buffer?.Dispose();
             Source.Dispose();
         }
