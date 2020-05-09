@@ -1,10 +1,7 @@
 ﻿using System.ComponentModel;
 using SharpAudio.Codec.FFMPEG;
 using System;
-using System.Diagnostics;
 using System.IO;
-using System.Linq;
-using System.Threading;
 using System.Threading.Tasks;
 using SharpAudio.SpectrumAnalysis;
 using System.Numerics;

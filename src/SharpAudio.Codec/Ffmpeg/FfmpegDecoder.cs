@@ -1,12 +1,7 @@
-using System.Buffers;
-using System.Threading;
-using System.Linq;
 using System.Runtime.InteropServices;
 using System;
 using FFmpeg.AutoGen;
 using System.IO;
-using System.Threading.Tasks;
-using System.Collections.Generic;
 
 namespace SharpAudio.Codec.FFMPEG
 {
@@ -22,6 +17,10 @@ namespace SharpAudio.Codec.FFMPEG
         private FFmpegPointers ff = new FFmpegPointers();
         private byte[] tempSampleBuf;
         private CircularBuffer _slidestream;
+
+        private TimeSpan seekTimeTarget;
+        private volatile bool doSeek = false;
+        private TimeSpan curPos;
 
         private readonly AVSampleFormat _DESIRED_SAMPLE_FORMAT = AVSampleFormat.AV_SAMPLE_FMT_S16;
         private readonly int _DESIRED_SAMPLE_RATE = 44_100;
@@ -110,27 +109,9 @@ namespace SharpAudio.Codec.FFMPEG
                 {
                     stream_index = i;
                     break;
-                }
-                // var x = ff.format_context->streams[i]->disposition & ffmpeg.AV_DISPOSITION_ATTACHED_PIC;
-                // if (x != 0)
-                // {
-                //     AVPacket pkt = ff.format_context->streams[i]->attached_pic;
-
-                //     break;
-                // }
+                } 
             }
-
-            // for (int i = 0; i < ff.format_context->nb_streams; i++)
-            // {
-            //     if ((ff.format_context->streams[i]->disposition & ffmpeg.AV_DISPOSITION_ATTACHED_PIC) != 0)
-            //     {
-            //         AVPacket pkt = ff.format_context->streams[i]->attached_pic;
-            //         // In case we wanna get album art from ffmpeg...
-            //         ffmpeg.av_packet_unref(&pkt);
-            //         break;
-            //     }
-            // }
-
+ 
             if (stream_index == -1)
             {
                 throw new FormatException("FFMPEG: Could not retrieve audio stream from IO stream.");
@@ -175,60 +156,8 @@ namespace SharpAudio.Codec.FFMPEG
             ff.av_packet = ffmpeg.av_packet_alloc();
             ff.av_src_frame = ffmpeg.av_frame_alloc();
 
-            this.tempSampleBuf = new byte[(int)(_audioFormat.SampleRate * _audioFormat.Channels * 2)];
-
-            this._slidestream = new CircularBuffer(tempSampleBuf.Length);
-
-            // AVDictionaryEntry* tag = null;
-            // this._audioMetaData = new AudioMetadata();
-            // _audioMetaData.ExtraData = new Dictionary<string, string>();
-
-
-            // do
-            // {
-            //     tag = ffmpeg.av_dict_get(ff.format_context->metadata, "", tag, ffmpeg.AV_DICT_IGNORE_SUFFIX);
-
-            //     if (tag == null)
-            //         break;
-
-            //     var key = Marshal.PtrToStringAnsi((IntPtr)tag->key);
-            //     var val = Marshal.PtrToStringAnsi((IntPtr)tag->value);
-
-            //     switch (key.ToLowerInvariant().Trim())
-            //     {
-            //         case "title":
-            //             _audioMetaData.Title = val;
-            //             break;
-            //         case "artist":
-            //         case "artists":
-            //         case "author":
-            //         case "composer":
-            //             if (_audioMetaData.Artists is null)
-            //                 _audioMetaData.Artists = new List<string>();
-
-            //             _audioMetaData.Artists.AddRange(val.Split(',', StringSplitOptions.RemoveEmptyEntries).Select(x => x.Trim()));
-            //             break;
-            //         case "album":
-            //             _audioMetaData.Album = val;
-            //             break;
-            //         case "genre":
-            //             if (_audioMetaData.Genre is null)
-            //                 _audioMetaData.Genre = new List<string>();
-
-            //             _audioMetaData.Genre.AddRange(val.Split(',', StringSplitOptions.RemoveEmptyEntries).Select(x => x.Trim()));
-            //             break;
-            //         case "year":
-            //             _audioMetaData.Year = val;
-            //             break;
-            //         default:
-            //             _audioMetaData.ExtraData.Add(key, val);
-            //             break;
-            //     }
-
-            // } while (true);
-
-            // if (_audioMetaData.Artists != null)
-            //     _audioMetaData.Artists = _audioMetaData.Artists.GroupBy(x => x).Select(y => y.First()).ToList();
+            tempSampleBuf = new byte[(int)(_audioFormat.SampleRate * _audioFormat.Channels * 2)];
+            _slidestream = new CircularBuffer(tempSampleBuf.Length);
 
         }
 
@@ -237,7 +166,7 @@ namespace SharpAudio.Codec.FFMPEG
             _audioFormat.SampleRate = _DESIRED_SAMPLE_RATE;
             _audioFormat.Channels = _DESIRED_CHANNEL_COUNT;
             _audioFormat.BitsPerSample = 16;
-            _numSamples = (int)((ff.format_context->duration / (float)ffmpeg.AV_TIME_BASE) * _DESIRED_SAMPLE_RATE * _DESIRED_CHANNEL_COUNT);
+            _numSamples = (int)(ff.format_context->duration / (float)ffmpeg.AV_TIME_BASE * _DESIRED_SAMPLE_RATE * _DESIRED_CHANNEL_COUNT);
         }
 
         public override bool IsFinished => _isFinished;
@@ -361,10 +290,6 @@ namespace SharpAudio.Codec.FFMPEG
                 ffmpeg.av_frame_free(x);
         }
 
-        TimeSpan seekTimeTarget;
-        volatile bool doSeek = false;
-        private TimeSpan curPos;
-
         public override void TrySeek(TimeSpan time)
         {
             if (!doSeek & targetStream.CanSeek)
@@ -373,7 +298,7 @@ namespace SharpAudio.Codec.FFMPEG
                 seekTimeTarget = time;
             }
         }
- 
+
         public override void Dispose()
         {
             targetStream?.Dispose();
