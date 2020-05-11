@@ -67,7 +67,8 @@ namespace SharpAudio.Codec
         /// </summary>
         public TimeSpan Position => _decoder.Position;
 
-        volatile SoundStreamState _state;
+        private volatile SoundStreamState _state;
+        private volatile bool hasDecodedSamples = false;
 
         public SoundStreamState State => _state;
 
@@ -204,6 +205,7 @@ namespace SharpAudio.Codec
 
                 Array.Clear(channelCounters, 0, channelCounters.Length);
 
+                // Process FFT for each channel.
                 for (int curCh = 0; curCh < totalCh; curCh++)
                 {
                     for (int i = 0; i < fftLength; i++)
@@ -246,6 +248,30 @@ namespace SharpAudio.Codec
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(State)));
         }
 
+        private async Task DecoderLoop()
+        {
+            do
+            {
+                switch (_state)
+                {
+                    case SoundStreamState.Playing:
+                        if (!hasDecodedSamples)
+                        {
+                            _decoder.GetSamples(SampleQuantum, ref _data);
+                            hasDecodedSamples = true;
+                        }
+                        break;
+                }
+
+                if (_decoder.IsFinished)
+                {
+                    _state = SoundStreamState.Stopping;
+                }
+
+                await Task.Delay(SampleWait);
+            
+            } while (_state != SoundStreamState.Stopping);
+        }
 
         private async Task MainLoop()
         {
@@ -257,29 +283,35 @@ namespace SharpAudio.Codec
                         Source.Play();
                         _state = SoundStreamState.Playing;
                         Task.Factory.StartNew(SpectrumLoop, TaskCreationOptions.LongRunning | TaskCreationOptions.AttachedToParent);
+                        Task.Factory.StartNew(DecoderLoop, TaskCreationOptions.LongRunning | TaskCreationOptions.AttachedToParent);
                         break;
 
                     case SoundStreamState.Playing:
 
                         if (Source.BuffersQueued < 3)
                         {
-                            _decoder.GetSamples(SampleQuantum, ref _data);
-
-                            lock (_latesSampleLock)
+                            
+                            if (hasDecodedSamples)
                             {
-                                _latestSample = _data;
-                                _hasSpectrumData = true;
-                            }
+                                lock (_latesSampleLock)
+                                {
+                                    _latestSample = _data;
+                                    _hasSpectrumData = true;
+                                }
 
-                            if (_data is null)
+                                hasDecodedSamples = false;
+                            }
+                            else
+                            {
                                 _data = _silence;
+                            }
 
                             _chain.QueueData(Source, _data, Format);
                         }
 
                         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Position)));
 
-                        if (!Source.IsPlaying() || _decoder.IsFinished)
+                        if (!Source.IsPlaying())
                         {
                             _state = SoundStreamState.Stopping;
                         }
