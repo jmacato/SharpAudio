@@ -260,16 +260,16 @@ namespace SharpAudio.Codec
                             _decoder.GetSamples(SampleQuantum, ref _data);
                             hasDecodedSamples = true;
                         }
+
+                        if (_decoder.IsFinished)
+                        {
+                            _state = SoundStreamState.Stopping;
+                        }
                         break;
                 }
-
-                if (_decoder.IsFinished)
-                {
-                    _state = SoundStreamState.Stopping;
-                }
-
+                
                 await Task.Delay(SampleWait);
-            
+
             } while (_state != SoundStreamState.Stopping);
         }
 
@@ -290,7 +290,7 @@ namespace SharpAudio.Codec
 
                         if (Source.BuffersQueued < 3)
                         {
-                            
+
                             if (hasDecodedSamples)
                             {
                                 lock (_latesSampleLock)
