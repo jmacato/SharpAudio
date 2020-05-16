@@ -43,7 +43,7 @@ namespace SharpAudio.Codec
         /// <summary>
         /// The underlying source
         /// </summary>
-        public AudioSource Source { get; }
+        public AudioSource Source { get; private set; }
 
         /// <summary>
         /// Wether or not the audio is finished
@@ -54,6 +54,8 @@ namespace SharpAudio.Codec
         /// Wether or not the audio is streamed
         /// </summary>
         public bool IsStreamed { get; }
+
+        private AudioEngine _engine;
 
         /// <summary>
         /// The volume of the source
@@ -74,7 +76,7 @@ namespace SharpAudio.Codec
         /// </summary>
         public TimeSpan Position => _decoder.Position;
 
-        private volatile SoundStreamState _state;
+        private volatile SoundStreamState _state = SoundStreamState.PreparePlay;
         private volatile bool hasDecodedSamples = false;
 
         public SoundStreamState State => _state;
@@ -95,16 +97,13 @@ namespace SharpAudio.Codec
 
             IsStreamed = !stream.CanSeek;
 
-            Source = engine.CreateSource();
+            _engine = engine;
 
             _decoder = new FFmpegDecoder(stream);
 
             _chain = new BufferChain(engine);
 
             _silence = new byte[(int)(_decoder.Format.Channels * _decoder.Format.SampleRate * SampleQuantum.TotalSeconds)];
-
-            // Prime the buffer chain with empty data.
-            _chain.QueueData(Source, _silence, Format);
 
             Task.Factory.StartNew(MainLoop, TaskCreationOptions.LongRunning | TaskCreationOptions.AttachedToParent);
         }
@@ -273,10 +272,13 @@ namespace SharpAudio.Codec
                 switch (_state)
                 {
                     case SoundStreamState.PreparePlay:
+                        Source = _engine.CreateSource();
+                        // Prime the buffer chain with empty data.
+                        _chain.QueueData(Source, _silence, Format);
                         Source.Play();
-                        _state = SoundStreamState.Playing;
-                        Task.Factory.StartNew(SpectrumLoop, TaskCreationOptions.LongRunning | TaskCreationOptions.AttachedToParent);
-                        Task.Factory.StartNew(DecoderLoop, TaskCreationOptions.LongRunning | TaskCreationOptions.AttachedToParent);
+                        _state = SoundStreamState.Paused;
+                        _ = Task.Factory.StartNew(SpectrumLoop, TaskCreationOptions.LongRunning | TaskCreationOptions.AttachedToParent);
+                        _ = Task.Factory.StartNew(DecoderLoop, TaskCreationOptions.LongRunning | TaskCreationOptions.AttachedToParent);
                         break;
 
                     case SoundStreamState.Playing:
@@ -324,8 +326,10 @@ namespace SharpAudio.Codec
             } while (_state != SoundStreamState.Stopping);
 
             Source.Stop();
+            Source.Dispose();
 
             _state = SoundStreamState.Stopped;
+
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Position)));
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(State)));
         }
@@ -337,14 +341,12 @@ namespace SharpAudio.Codec
         {
             _state = SoundStreamState.Stopping;
         }
-
         public void Dispose()
         {
             Stop();
             FFTDataReady = null;
             _decoder?.Dispose();
             _buffer?.Dispose();
-            Source.Dispose();
         }
     }
 }
