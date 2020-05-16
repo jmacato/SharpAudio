@@ -13,51 +13,51 @@ namespace SharpAudio.Codec.FFMPEG
         {
             var curPath = Path.GetDirectoryName(Assembly.GetEntryAssembly().Location);
 
-            string runtime_id = null;
+            string runtimeId = null;
 
             if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
             {
                 if (RuntimeInformation.OSArchitecture == Architecture.X64)
                 {
-                    runtime_id = "win-x64";
+                    runtimeId = "win7-x64";
                 }
                 else if (RuntimeInformation.OSArchitecture == Architecture.X64)
                 {
-                    runtime_id = "win-x86";
+                    runtimeId = "win7-x86";
                 }
             }
             else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
             {
                 if (RuntimeInformation.OSArchitecture == Architecture.X64)
                 {
-                    runtime_id = "linux-x64";
+                    runtimeId = "linux-x64";
                 }
                 else if (RuntimeInformation.OSArchitecture == Architecture.X64)
                 {
-                    runtime_id = "linux-x86";
+                    runtimeId = "linux-x86";
                 }
                 else if (RuntimeInformation.OSArchitecture == Architecture.Arm)
                 {
-                    runtime_id = "linux-arm";
+                    runtimeId = "linux-arm";
                 }
                 else if (RuntimeInformation.OSArchitecture == Architecture.Arm64)
                 {
-                    runtime_id = "linux-arm64";
+                    runtimeId = "linux-arm64";
                 }
             }
             else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
             {
                 if (RuntimeInformation.OSArchitecture == Architecture.X64)
                 {
-                    runtime_id = "osx-x64";
+                    runtimeId = "osx-x64";
                 }
                 else if (RuntimeInformation.OSArchitecture == Architecture.X64)
                 {
-                    runtime_id = "osx-x86";
+                    runtimeId = "osx-x86";
                 }
             }
 
-            ffmpeg.RootPath = Path.Combine(curPath, $"runtimes/{runtime_id}/");
+            ffmpeg.RootPath = Path.Combine(curPath, $"runtimes/{runtimeId}/native/");
 
         }
 
