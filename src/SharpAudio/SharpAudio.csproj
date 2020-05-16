@@ -9,10 +9,30 @@
 
   <ItemGroup>
     <PackageReference Include="SharpDX.XAudio2" Version="4.2.0" />
+    <PackageReference Include="FFmpeg.Native" Version="4.2.2-ci-20200512.4" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\SharpAudio.ALBinding\SharpAudio.ALBinding.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="$(NuGetPackageRoot)ffmpeg.native\4.2.2-ci-20200512.4\runtimes\win7-x64\native\*.*">
+      <Link>runtime\%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="$(NuGetPackageRoot)ffmpeg.native\4.2.2-ci-20200512.4\runtimes\linux-x64\native\*.*">
+      <Link>runtime\%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="$(NuGetPackageRoot)ffmpeg.native\4.2.2-ci-20200512.4\runtimes\win7-x64\native\*.*">
+      <Link>runtime\%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
 
 </Project>
