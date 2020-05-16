@@ -2,11 +2,65 @@ using System.Runtime.InteropServices;
 using System;
 using FFmpeg.AutoGen;
 using System.IO;
+using System.Reflection;
 
 namespace SharpAudio.Codec.FFMPEG
 {
     public class FFmpegDecoder : Decoder
     {
+
+        static FFmpegDecoder()
+        {
+            var curPath = Path.GetDirectoryName(Assembly.GetEntryAssembly().Location);
+
+            string runtime_id = null;
+
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            {
+                if (RuntimeInformation.OSArchitecture == Architecture.X64)
+                {
+                    runtime_id = "win-x64";
+                }
+                else if (RuntimeInformation.OSArchitecture == Architecture.X64)
+                {
+                    runtime_id = "win-x86";
+                }
+            }
+            else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+            {
+                if (RuntimeInformation.OSArchitecture == Architecture.X64)
+                {
+                    runtime_id = "linux-x64";
+                }
+                else if (RuntimeInformation.OSArchitecture == Architecture.X64)
+                {
+                    runtime_id = "linux-x86";
+                }
+                else if (RuntimeInformation.OSArchitecture == Architecture.Arm)
+                {
+                    runtime_id = "linux-arm";
+                }
+                else if (RuntimeInformation.OSArchitecture == Architecture.Arm64)
+                {
+                    runtime_id = "linux-arm64";
+                }
+            }
+            else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+            {
+                if (RuntimeInformation.OSArchitecture == Architecture.X64)
+                {
+                    runtime_id = "osx-x64";
+                }
+                else if (RuntimeInformation.OSArchitecture == Architecture.X64)
+                {
+                    runtime_id = "osx-x86";
+                }
+            }
+
+            ffmpeg.RootPath = Path.Combine(curPath, $"runtimes/{runtime_id}/");
+
+        }
+
         private const int fsStreamSize = 8192;
         private byte[] ffmpegFSBuf = new byte[fsStreamSize];
         private Stream targetStream;
@@ -109,9 +163,9 @@ namespace SharpAudio.Codec.FFMPEG
                 {
                     stream_index = i;
                     break;
-                } 
+                }
             }
- 
+
             if (stream_index == -1)
             {
                 throw new FormatException("FFMPEG: Could not retrieve audio stream from IO stream.");
