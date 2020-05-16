@@ -20,6 +20,13 @@ namespace SharpAudio.Codec
         private bool _hasSpectrumData;
         private byte[] _latestSample;
         private object _latesSampleLock = new object();
+        public event EventHandler<double[,]> FFTDataReady;
+        protected const double MinDbValue = -90;
+        protected const double MaxDbValue = 0;
+        protected const double DbScale = MaxDbValue - MinDbValue;
+        private readonly int fftLength = 512;
+        private readonly int binaryExp;
+
 
         public event PropertyChangedEventHandler PropertyChanged;
 
@@ -84,6 +91,8 @@ namespace SharpAudio.Codec
             if (stream == null)
                 throw new ArgumentNullException("Stream cannot be null!");
 
+            binaryExp = (int)Math.Log(fftLength, 2.0);
+
             IsStreamed = !stream.CanSeek;
 
             Source = engine.CreateSource();
@@ -99,16 +108,6 @@ namespace SharpAudio.Codec
 
             Task.Factory.StartNew(MainLoop, TaskCreationOptions.LongRunning | TaskCreationOptions.AttachedToParent);
         }
-
-        public event EventHandler<double[,]> FFTDataReady;
-
-        private int fftLength = 512;
-
-        double max = 0.0000000000000001;
-
-        protected const double MinDbValue = -90;
-        protected const double MaxDbValue = 0;
-        protected const double DbScale = (MaxDbValue - MinDbValue);
 
         private double[,] FFT2Double(Complex[,] fftResults, int ch, int fftLength)
         {
@@ -148,20 +147,14 @@ namespace SharpAudio.Codec
         private async Task SpectrumLoop()
         {
             // Assuming 16 bit PCM, Little-endian, Variable Channels.
-            int totalCh = _decoder.Format.Channels;
-            int specSamples = fftLength * totalCh * sizeof(short);
-            int curChByteRaw = 0;
-
+            var totalCh = _decoder.Format.Channels;
+            var specSamples = fftLength * totalCh * sizeof(short);
+            var curChByteRaw = 0;
             var tempBuf = new byte[specSamples];
-
             var samplesDouble = new double[totalCh, fftLength];
-
             var channelCounters = new int[totalCh];
             var complexSamples = new Complex[totalCh, fftLength];
-
             var shortDivisor = (double)short.MaxValue;
-            var binaryExp = (int)Math.Log(fftLength, 2.0);
-
             var cachedWindowVal = new double[fftLength];
 
             for (int i = 0; i < fftLength; i++)
@@ -267,7 +260,7 @@ namespace SharpAudio.Codec
                         }
                         break;
                 }
-                
+
                 await Task.Delay(SampleWait);
 
             } while (_state != SoundStreamState.Stopping);
