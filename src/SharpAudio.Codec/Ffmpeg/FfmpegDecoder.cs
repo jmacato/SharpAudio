@@ -64,7 +64,7 @@ namespace SharpAudio.Codec.FFMPEG
         private const int fsStreamSize = 8192;
         private byte[] ffmpegFSBuf = new byte[fsStreamSize];
         private Stream targetStream;
-        private int sampleMult;
+        private int sampleByteSize;
         private avio_alloc_context_read_packet avioRead;
         private avio_alloc_context_seek avioSeek;
         private int stream_index;
@@ -76,7 +76,7 @@ namespace SharpAudio.Codec.FFMPEG
         private volatile bool doSeek = false;
         private TimeSpan curPos;
         private bool anchorNewPos;
-        private bool _isDecoderFinished;
+        private volatile bool _isDecoderFinished;
         private readonly AVSampleFormat _DESIRED_SAMPLE_FORMAT = AVSampleFormat.AV_SAMPLE_FMT_S16;
         private readonly int _DESIRED_SAMPLE_RATE = 44_100;
         private readonly int _DESIRED_CHANNEL_COUNT = 2;
@@ -125,7 +125,7 @@ namespace SharpAudio.Codec.FFMPEG
         public FFmpegDecoder(Stream src)
         {
             targetStream = src;
-            sampleMult = _DESIRED_SAMPLE_RATE * _DESIRED_CHANNEL_COUNT * sizeof(ushort);
+            sampleByteSize = _DESIRED_SAMPLE_RATE * _DESIRED_CHANNEL_COUNT * sizeof(ushort);
 
             Ffmpeg_Initialize();
         }
@@ -236,12 +236,12 @@ namespace SharpAudio.Codec.FFMPEG
 
             do
             {
-                await Task.Delay(1);
-
                 if (_isDecoderFinished)
                     return;
 
-                if (_slidestream.Length > sampleMult)
+                await Task.Delay(1);
+
+                if (_slidestream.Length > sampleByteSize)
                     continue;
 
                 unsafe
@@ -274,7 +274,8 @@ namespace SharpAudio.Codec.FFMPEG
                             {
                                 continue;
                             }
-                            else if (anchorNewPos)
+                            
+                            if (anchorNewPos)
                             {
                                 double pts = ff.av_src_frame->pts;
                                 pts *= ff.av_stream->time_base.num / (double)ff.av_stream->time_base.den;
@@ -285,6 +286,7 @@ namespace SharpAudio.Codec.FFMPEG
                             if (frameFinished > 0)
                             {
                                 ProcessAudioFrame(ref tempSampleBuf, ref count);
+                                _slidestream.Write(tempSampleBuf, 0, count);
                             }
                         }
                     }
@@ -293,41 +295,26 @@ namespace SharpAudio.Codec.FFMPEG
                         _isDecoderFinished = true;
                     }
                 }
-
-                _slidestream.Write(tempSampleBuf, 0, count);
-
-
             } while (!_isDecoderFinished);
-
         }
 
         public override long GetSamples(int samples, ref byte[] data)
         {
+            data = new byte[samples];
+            var res = _slidestream.Read(data, 0, samples);
 
-            if (_slidestream.Length >= samples)
+            if (res > 0)
             {
-                data = new byte[samples];
-                var res = _slidestream.Read(data, 0, samples);
-                // Console.WriteLine(_slidestream.Length / (double)(sampleMult));
-                var x = res / (double)(sampleMult);
-                // Console.WriteLine(x);
+                Console.WriteLine(_slidestream.Length / (double)(sampleByteSize));
+                var x = res / (double)(sampleByteSize);
+                Console.WriteLine(x);
                 curPos += TimeSpan.FromSeconds(x);
-
                 return res;
             }
-
-            if (_slidestream.Length < samples)
+            else if (res == 0 & _isDecoderFinished)
             {
-                data = new byte[samples];
-                var res = _slidestream.Read(data, 0, samples);
-                data = data[0..res];
-
-                if (_slidestream.Length == 0 & _isDecoderFinished)
-                {
-                    _isFinished = true;
-                }
-
-                return res;
+                _isFinished = true;
+                return -1;
             }
 
             return 0;

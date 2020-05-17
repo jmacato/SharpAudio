@@ -279,6 +279,12 @@ namespace SharpAudio.Codec
 
                             if (res == 0)
                                 continue;
+                            
+                            else if (res == -1)
+                            {
+                                _state = SoundStreamState.Stop;
+                                break;
+                            }
 
                             lock (_latesSampleLock)
                             {
