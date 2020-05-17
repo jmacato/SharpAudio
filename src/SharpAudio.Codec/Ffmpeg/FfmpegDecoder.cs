@@ -21,7 +21,7 @@ namespace SharpAudio.Codec.FFMPEG
                 {
                     runtimeId = "win7-x64";
                 }
-                else if (RuntimeInformation.OSArchitecture == Architecture.X64)
+                else if (RuntimeInformation.OSArchitecture == Architecture.X86)
                 {
                     runtimeId = "win7-x86";
                 }
@@ -32,7 +32,7 @@ namespace SharpAudio.Codec.FFMPEG
                 {
                     runtimeId = "linux-x64";
                 }
-                else if (RuntimeInformation.OSArchitecture == Architecture.X64)
+                else if (RuntimeInformation.OSArchitecture == Architecture.X86)
                 {
                     runtimeId = "linux-x86";
                 }
@@ -51,7 +51,7 @@ namespace SharpAudio.Codec.FFMPEG
                 {
                     runtimeId = "osx-x64";
                 }
-                else if (RuntimeInformation.OSArchitecture == Architecture.X64)
+                else if (RuntimeInformation.OSArchitecture == Architecture.X86)
                 {
                     runtimeId = "osx-x86";
                 }
