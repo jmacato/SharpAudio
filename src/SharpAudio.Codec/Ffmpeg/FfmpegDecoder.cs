@@ -313,10 +313,9 @@ namespace SharpAudio.Codec.FFMPEG
 
         }
 
-
         public override long GetSamples(int samples, ref byte[] data)
         {
-            if(_slidestream.Length == 0 && _isDecoderFinished)
+            if (_slidestream.Length == 0 && _isDecoderFinished)
             {
                 _isFinished = true;
                 return -2;
@@ -391,7 +390,7 @@ namespace SharpAudio.Codec.FFMPEG
 
         public override void Preload()
         {
-            
+
         }
     }
 }

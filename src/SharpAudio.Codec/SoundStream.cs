@@ -8,14 +8,14 @@ using System.Numerics;
 
 namespace SharpAudio.Codec
 {
+
     public sealed class SoundStream : IDisposable, INotifyPropertyChanged
     {
         private Decoder _decoder;
-        private BufferChain _chain;
         private byte[] _silence;
         private AudioBuffer _buffer;
         private byte[] _data;
-        private readonly TimeSpan SampleQuantum = TimeSpan.FromSeconds(0.1);
+        private readonly TimeSpan SampleQuantum = TimeSpan.FromSeconds(0.2);
         private readonly TimeSpan SampleWait = TimeSpan.FromMilliseconds(1);
         private bool _hasSpectrumData;
         private byte[] _latestSample;
@@ -43,7 +43,7 @@ namespace SharpAudio.Codec
         /// <summary>
         /// The underlying source
         /// </summary>
-        public AudioSource Source { get; private set; }
+        // public AudioSource Source { get; private set; }
 
         /// <summary>
         /// Wether or not the audio is finished
@@ -55,15 +55,17 @@ namespace SharpAudio.Codec
         /// </summary>
         public bool IsStreamed { get; }
 
-        private AudioEngine _engine;
+        private SoundSink _backend;
+
+        // private AudioEngine _engine;
 
         /// <summary>
         /// The volume of the source
         /// </summary>
         public float Volume
         {
-            get => Source.Volume;
-            set => Source.Volume = value;
+            get => _backend?.Source.Volume ?? 0;
+            set => _backend.Source.Volume = value;
         }
 
         /// <summary>
@@ -81,14 +83,26 @@ namespace SharpAudio.Codec
 
         public SoundStreamState State => _state;
 
-        public void TrySeek(TimeSpan seek) => _decoder.TrySeek(seek);
+        bool firstSeek = true;
+
+        public void TrySeek(TimeSpan seek)
+        {
+            if (firstSeek)
+            {
+                firstSeek = false;
+                return;
+            }
+            
+            _backend.ClearBuffers();
+            _decoder.TrySeek(seek);
+        }
 
         /// <summary>
         /// Initializes a new instance of the <see cref="SoundStream"/> class.
         /// </summary>
         /// <param name="stream">The sound stream.</param>
         /// <param name="engine">The audio engine</param>
-        public SoundStream(Stream stream, AudioEngine engine)
+        public SoundStream(Stream stream, SoundSink backend)
         {
             if (stream == null)
                 throw new ArgumentNullException("Stream cannot be null!");
@@ -97,13 +111,9 @@ namespace SharpAudio.Codec
 
             IsStreamed = !stream.CanSeek;
 
-            _engine = engine;
+            _backend = backend;
 
             _decoder = new FFmpegDecoder(stream);
-
-            _chain = new BufferChain(engine);
-
-            _silence = new byte[(int)(_decoder.Format.Channels * _decoder.Format.SampleRate * SampleQuantum.TotalSeconds)];
 
             Task.Factory.StartNew(MainLoop, TaskCreationOptions.LongRunning | TaskCreationOptions.AttachedToParent);
         }
@@ -248,96 +258,55 @@ namespace SharpAudio.Codec
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(State)));
         }
 
-        private async Task DecoderLoop()
+        private async Task MainLoop()
         {
             do
             {
+                await Task.Delay(SampleWait);
+
                 switch (_state)
                 {
+                    case SoundStreamState.PreparePlay:
+
+                        _state = SoundStreamState.Paused;
+
+                        _ = Task.Factory.StartNew(SpectrumLoop, TaskCreationOptions.LongRunning | TaskCreationOptions.AttachedToParent);
+
+                        break;
+
                     case SoundStreamState.Playing:
-                        if (!hasDecodedSamples)
-                        {
-                            _decoder.GetSamples(SampleQuantum, ref _data);
-                            hasDecodedSamples = true;
-                        }
 
                         if (_decoder.IsFinished)
                         {
                             _state = SoundStreamState.Stopping;
                         }
-                        break;
-                }
 
-                await Task.Delay(SampleWait);
-
-            } while (_state != SoundStreamState.Stopping);
-        }
-
-        private async Task MainLoop()
-        {
-            do
-            {
-                switch (_state)
-                {
-                    case SoundStreamState.PreparePlay:
-                        Source = _engine.CreateSource();
-                        // Prime the buffer chain with empty data.
-                        _chain.QueueData(Source, _silence, Format);
-
-                        _decoder.Preload();
-
-                        Source.Play();
-                        _state = SoundStreamState.Paused;
-                        _ = Task.Factory.StartNew(SpectrumLoop, TaskCreationOptions.LongRunning | TaskCreationOptions.AttachedToParent);
-                        _ = Task.Factory.StartNew(DecoderLoop, TaskCreationOptions.LongRunning | TaskCreationOptions.AttachedToParent);
-                        break;
-
-                    case SoundStreamState.Playing:
-
-                        if (Source.BuffersQueued < 3)
+                        if (_backend.NeedsNewSample)
                         {
 
-                            if (hasDecodedSamples)
-                            {
-                                lock (_latesSampleLock)
-                                {
-                                    _latestSample = _data;
-                                    _hasSpectrumData = true;
-                                }
+                            var res = _decoder.GetSamples(SampleQuantum, ref _data);
 
-                                hasDecodedSamples = false;
-                            }
-                            else
+                            if (res == -2) continue;
+
+                            lock (_latesSampleLock)
                             {
-                                _data = _silence;
+                                _latestSample = _data;
+                                _hasSpectrumData = true;
                             }
 
-                            _chain.QueueData(Source, _data, Format);
+                            _backend.Send(_data);
                         }
+
 
                         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Position)));
-
-                        if (!Source.IsPlaying())
-                        {
-                            _state = SoundStreamState.Stopping;
-                        }
                         break;
 
                     case SoundStreamState.Paused:
-                        if (Source.BuffersQueued < 3)
-                        {
-                            _data = _silence;
-                            _chain.QueueData(Source, _data, Format);
-                        }
                         break;
                 }
 
-                await Task.Delay(SampleWait);
 
             } while (_state != SoundStreamState.Stopping);
-
-            Source.Stop();
-            Source.Dispose();
 
             _state = SoundStreamState.Stopped;
 
