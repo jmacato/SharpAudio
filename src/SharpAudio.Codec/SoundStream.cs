@@ -275,6 +275,9 @@ namespace SharpAudio.Codec
                         Source = _engine.CreateSource();
                         // Prime the buffer chain with empty data.
                         _chain.QueueData(Source, _silence, Format);
+
+                        _decoder.Preload();
+                        
                         Source.Play();
                         _state = SoundStreamState.Paused;
                         _ = Task.Factory.StartNew(SpectrumLoop, TaskCreationOptions.LongRunning | TaskCreationOptions.AttachedToParent);

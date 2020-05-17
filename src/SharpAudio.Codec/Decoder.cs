@@ -66,5 +66,7 @@ namespace SharpAudio.Codec
         }
 
         public abstract void TrySeek(TimeSpan time);
+        public abstract void Preload();
+ 
     }
 }

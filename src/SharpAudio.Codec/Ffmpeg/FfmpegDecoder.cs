@@ -3,6 +3,7 @@ using System;
 using FFmpeg.AutoGen;
 using System.IO;
 using System.Reflection;
+using System.Threading.Tasks;
 
 namespace SharpAudio.Codec.FFMPEG
 {
@@ -64,6 +65,7 @@ namespace SharpAudio.Codec.FFMPEG
         private const int fsStreamSize = 8192;
         private byte[] ffmpegFSBuf = new byte[fsStreamSize];
         private Stream targetStream;
+        private int sampleMult;
         private avio_alloc_context_read_packet avioRead;
         private avio_alloc_context_seek avioSeek;
         private int stream_index;
@@ -75,7 +77,8 @@ namespace SharpAudio.Codec.FFMPEG
         private TimeSpan seekTimeTarget;
         private volatile bool doSeek = false;
         private TimeSpan curPos;
-
+        private bool doSeek2;
+        private bool _isDecoderFinished;
         private readonly AVSampleFormat _DESIRED_SAMPLE_FORMAT = AVSampleFormat.AV_SAMPLE_FMT_S16;
         private readonly int _DESIRED_SAMPLE_RATE = 44_100;
         private readonly int _DESIRED_CHANNEL_COUNT = 2;
@@ -121,6 +124,7 @@ namespace SharpAudio.Codec.FFMPEG
         public FFmpegDecoder(Stream src)
         {
             targetStream = src;
+            sampleMult = _DESIRED_SAMPLE_RATE * _DESIRED_CHANNEL_COUNT * sizeof(ushort);
 
             Ffmpeg_Initialize();
         }
@@ -210,9 +214,10 @@ namespace SharpAudio.Codec.FFMPEG
             ff.av_packet = ffmpeg.av_packet_alloc();
             ff.av_src_frame = ffmpeg.av_frame_alloc();
 
-            tempSampleBuf = new byte[(int)(_audioFormat.SampleRate * _audioFormat.Channels * 2)];
+            tempSampleBuf = new byte[(int)(_audioFormat.SampleRate * _audioFormat.Channels * 5)];
             _slidestream = new CircularBuffer(tempSampleBuf.Length);
 
+            Task.Factory.StartNew(MainLoop, TaskCreationOptions.LongRunning | TaskCreationOptions.AttachedToParent);
         }
 
         private unsafe void SetAudioFormat()
@@ -229,22 +234,22 @@ namespace SharpAudio.Codec.FFMPEG
 
         public override TimeSpan Duration => base.Duration;
 
-        public override long GetSamples(int samples, ref byte[] data)
+        public async Task MainLoop()
         {
-
+            Console.WriteLine("Preloaded");
             int frameFinished = 0;
             int count = 0;
 
-            if (_slidestream.Length > samples)
-            {
-                data = new byte[samples];
-                _slidestream.Read(data, 0, samples);
-                return samples;
-            }
-
             do
             {
-                if (_isFinished) return 0;
+                await Task.Delay(1);
+
+                if (_isDecoderFinished) return;
+
+                if (_slidestream.Length > sampleMult * 2)
+                {
+                    continue;
+                }
 
                 unsafe
                 {
@@ -256,6 +261,8 @@ namespace SharpAudio.Codec.FFMPEG
                         ff.av_packet = ffmpeg.av_packet_alloc();
                         doSeek = false;
                         seekTimeTarget = TimeSpan.Zero;
+                        _slidestream.Clear();
+                        doSeek2 = true;
                     }
 
                     if (ffmpeg.av_read_frame(ff.format_context, ff.av_packet) >= 0)
@@ -275,11 +282,12 @@ namespace SharpAudio.Codec.FFMPEG
                                 continue;
                                 //curPos += TimeSpan.FromSeconds(ff.av_src_frame->nb_samples * ff.av_stream->time_base.num / (double)ff.av_stream->time_base.den);
                             }
-                            else
+                            else if (doSeek2)
                             {
                                 double pts = ff.av_src_frame->pts;
                                 pts *= ff.av_stream->time_base.num / (double)ff.av_stream->time_base.den;
                                 curPos = TimeSpan.FromSeconds(pts);
+                                doSeek2 = false;
                             }
 
                             if (frameFinished > 0)
@@ -291,27 +299,50 @@ namespace SharpAudio.Codec.FFMPEG
                     else
                     {
                         // Hack just to make sure it always return the full length.
-                        if (curPos != Duration)
-                            curPos = Duration;
+                        // if (curPos != Duration)
+                        //     curPos = Duration;
 
-                        _isFinished = true;
-                        return 0;
+                        _isDecoderFinished = true;
                     }
                 }
 
                 _slidestream.Write(tempSampleBuf, 0, count);
 
-                if (_slidestream.Length > samples)
-                {
-                    break;
-                }
 
-            } while (!_isFinished);
+            } while (!_isDecoderFinished);
+
+        }
 
 
-            data = new byte[samples];
-            _slidestream.Read(data, 0, samples);
-            return samples;
+        public override long GetSamples(int samples, ref byte[] data)
+        {
+            if(_slidestream.Length == 0 && _isDecoderFinished)
+            {
+                _isFinished = true;
+                return -2;
+            }
+
+            if (_slidestream.Length >= samples)
+            {
+                data = new byte[samples];
+                var res = _slidestream.Read(data, 0, samples);
+                // Console.WriteLine(_slidestream.Length / (double)(sampleMult));
+                var x = res / (double)(sampleMult);
+                // Console.WriteLine(x);
+                curPos += TimeSpan.FromSeconds(x);
+
+                return res;
+            }
+
+            if (_slidestream.Length < samples)
+            {
+                data = new byte[samples];
+                var res = _slidestream.Read(data, 0, samples);
+                data = data[0..res];
+                return res;
+            }
+
+            return -2;
         }
 
         private unsafe void ProcessAudioFrame(ref byte[] data, ref int count)
@@ -356,6 +387,11 @@ namespace SharpAudio.Codec.FFMPEG
         public override void Dispose()
         {
             targetStream?.Dispose();
+        }
+
+        public override void Preload()
+        {
+            
         }
     }
 }
