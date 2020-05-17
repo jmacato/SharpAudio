@@ -83,16 +83,8 @@ namespace SharpAudio.Codec
 
         public SoundStreamState State => _state;
 
-        bool firstSeek = true;
-
         public void TrySeek(TimeSpan seek)
         {
-            if (firstSeek)
-            {
-                firstSeek = false;
-                return;
-            }
-            
             _backend.ClearBuffers();
             _decoder.TrySeek(seek);
         }
@@ -231,7 +223,7 @@ namespace SharpAudio.Codec
 
                 Array.Clear(samplesDouble, 0, samplesDouble.Length);
 
-            } while (_state != SoundStreamState.Stopped);
+            } while (_state != SoundStreamState.Stop);
         }
 
         /// <summary>
@@ -278,15 +270,15 @@ namespace SharpAudio.Codec
 
                         if (_decoder.IsFinished)
                         {
-                            _state = SoundStreamState.Stopping;
+                            _state = SoundStreamState.Stop;
                         }
 
                         if (_backend.NeedsNewSample)
                         {
-
                             var res = _decoder.GetSamples(SampleQuantum, ref _data);
 
-                            if (res == -2) continue;
+                            if (res == 0)
+                                continue;
 
                             lock (_latesSampleLock)
                             {
@@ -306,9 +298,7 @@ namespace SharpAudio.Codec
                 }
 
 
-            } while (_state != SoundStreamState.Stopping);
-
-            _state = SoundStreamState.Stopped;
+            } while (_state != SoundStreamState.Stop);
 
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Position)));
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(State)));
@@ -319,11 +309,12 @@ namespace SharpAudio.Codec
         /// </summary>
         public void Stop()
         {
-            _state = SoundStreamState.Stopping;
+            _state = SoundStreamState.Stop;
         }
+
         public void Dispose()
         {
-            Stop();
+            _state = SoundStreamState.Stop;
             FFTDataReady = null;
             _decoder?.Dispose();
             _buffer?.Dispose();

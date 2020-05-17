@@ -9,7 +9,6 @@ namespace SharpAudio.Codec.FFMPEG
 {
     public class FFmpegDecoder : Decoder
     {
-
         static FFmpegDecoder()
         {
             var curPath = Path.GetDirectoryName(Assembly.GetEntryAssembly().Location);
@@ -58,8 +57,8 @@ namespace SharpAudio.Codec.FFMPEG
                 }
             }
 
-            ffmpeg.RootPath = Path.Combine(curPath, $"runtimes/{runtimeId}/native/");
-
+            if (runtimeId != null)
+                ffmpeg.RootPath = Path.Combine(curPath, $"runtimes/{runtimeId}/native/");
         }
 
         private const int fsStreamSize = 8192;
@@ -73,15 +72,17 @@ namespace SharpAudio.Codec.FFMPEG
         private FFmpegPointers ff = new FFmpegPointers();
         private byte[] tempSampleBuf;
         private CircularBuffer _slidestream;
-
         private TimeSpan seekTimeTarget;
         private volatile bool doSeek = false;
         private TimeSpan curPos;
-        private bool doSeek2;
+        private bool anchorNewPos;
         private bool _isDecoderFinished;
         private readonly AVSampleFormat _DESIRED_SAMPLE_FORMAT = AVSampleFormat.AV_SAMPLE_FMT_S16;
         private readonly int _DESIRED_SAMPLE_RATE = 44_100;
         private readonly int _DESIRED_CHANNEL_COUNT = 2;
+        public override bool IsFinished => _isFinished;
+        public override TimeSpan Position => curPos;
+        public override TimeSpan Duration => base.Duration;
 
         private unsafe int Read(void* opaque, byte* targetBuffer, int targetBufferLength)
         {
@@ -228,15 +229,8 @@ namespace SharpAudio.Codec.FFMPEG
             _numSamples = (int)(ff.format_context->duration / (float)ffmpeg.AV_TIME_BASE * _DESIRED_SAMPLE_RATE * _DESIRED_CHANNEL_COUNT);
         }
 
-        public override bool IsFinished => _isFinished;
-
-        public override TimeSpan Position => curPos;
-
-        public override TimeSpan Duration => base.Duration;
-
         public async Task MainLoop()
         {
-            Console.WriteLine("Preloaded");
             int frameFinished = 0;
             int count = 0;
 
@@ -244,12 +238,11 @@ namespace SharpAudio.Codec.FFMPEG
             {
                 await Task.Delay(1);
 
-                if (_isDecoderFinished) return;
+                if (_isDecoderFinished)
+                    return;
 
-                if (_slidestream.Length > sampleMult * 2)
-                {
+                if (_slidestream.Length > sampleMult)
                     continue;
-                }
 
                 unsafe
                 {
@@ -262,7 +255,7 @@ namespace SharpAudio.Codec.FFMPEG
                         doSeek = false;
                         seekTimeTarget = TimeSpan.Zero;
                         _slidestream.Clear();
-                        doSeek2 = true;
+                        anchorNewPos = true;
                     }
 
                     if (ffmpeg.av_read_frame(ff.format_context, ff.av_packet) >= 0)
@@ -280,14 +273,13 @@ namespace SharpAudio.Codec.FFMPEG
                             if (ff.av_src_frame->pts == ffmpeg.AV_NOPTS_VALUE)
                             {
                                 continue;
-                                //curPos += TimeSpan.FromSeconds(ff.av_src_frame->nb_samples * ff.av_stream->time_base.num / (double)ff.av_stream->time_base.den);
                             }
-                            else if (doSeek2)
+                            else if (anchorNewPos)
                             {
                                 double pts = ff.av_src_frame->pts;
                                 pts *= ff.av_stream->time_base.num / (double)ff.av_stream->time_base.den;
                                 curPos = TimeSpan.FromSeconds(pts);
-                                doSeek2 = false;
+                                anchorNewPos = false;
                             }
 
                             if (frameFinished > 0)
@@ -298,10 +290,6 @@ namespace SharpAudio.Codec.FFMPEG
                     }
                     else
                     {
-                        // Hack just to make sure it always return the full length.
-                        // if (curPos != Duration)
-                        //     curPos = Duration;
-
                         _isDecoderFinished = true;
                     }
                 }
@@ -315,11 +303,6 @@ namespace SharpAudio.Codec.FFMPEG
 
         public override long GetSamples(int samples, ref byte[] data)
         {
-            if (_slidestream.Length == 0 && _isDecoderFinished)
-            {
-                _isFinished = true;
-                return -2;
-            }
 
             if (_slidestream.Length >= samples)
             {
@@ -338,10 +321,16 @@ namespace SharpAudio.Codec.FFMPEG
                 data = new byte[samples];
                 var res = _slidestream.Read(data, 0, samples);
                 data = data[0..res];
+
+                if (_slidestream.Length == 0 & _isDecoderFinished)
+                {
+                    _isFinished = true;
+                }
+
                 return res;
             }
 
-            return -2;
+            return 0;
         }
 
         private unsafe void ProcessAudioFrame(ref byte[] data, ref int count)
