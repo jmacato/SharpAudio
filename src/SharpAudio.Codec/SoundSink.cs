@@ -11,7 +11,7 @@ namespace SharpAudio.Codec
         private AudioSource _audioSource;
         private CircularBuffer _circBuffer;
         private byte[] _tempBuf;
-        private static readonly TimeSpan SampleQuantum = TimeSpan.FromSeconds(0.1);
+        private static readonly TimeSpan SampleQuantum = TimeSpan.FromSeconds(0.05);
 
 
         public SoundSink(AudioEngine audioEngine)
@@ -26,7 +26,7 @@ namespace SharpAudio.Codec
             _silenceData = new byte[(int)(_format.Channels * _format.SampleRate * sizeof(ushort) * SampleQuantum.TotalSeconds)];
             _audioEngine = audioEngine;
             _chain = new BufferChain(_audioEngine);
-            _circBuffer = new CircularBuffer(_silenceData.Length * 5);
+            _circBuffer = new CircularBuffer(_silenceData.Length);
             _tempBuf = new byte[_silenceData.Length];
 
             Task.Factory.StartNew(MainLoop, TaskCreationOptions.LongRunning | TaskCreationOptions.AttachedToParent);

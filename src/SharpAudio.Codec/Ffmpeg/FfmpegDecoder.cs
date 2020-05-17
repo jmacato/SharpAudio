@@ -305,9 +305,9 @@ namespace SharpAudio.Codec.FFMPEG
 
             if (res > 0)
             {
-                Console.WriteLine(_slidestream.Length / (double)(sampleByteSize));
+                // Console.WriteLine(_slidestream.Length / (double)(sampleByteSize));
                 var x = res / (double)(sampleByteSize);
-                Console.WriteLine(x);
+                // Console.WriteLine(x);
                 curPos += TimeSpan.FromSeconds(x);
                 return res;
             }

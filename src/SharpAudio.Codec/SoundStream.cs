@@ -15,7 +15,7 @@ namespace SharpAudio.Codec
         private byte[] _silence;
         private AudioBuffer _buffer;
         private byte[] _data;
-        private readonly TimeSpan SampleQuantum = TimeSpan.FromSeconds(0.2);
+        private readonly TimeSpan SampleQuantum = TimeSpan.FromSeconds(0.05);
         private readonly TimeSpan SampleWait = TimeSpan.FromMilliseconds(1);
         private bool _hasSpectrumData;
         private byte[] _latestSample;
