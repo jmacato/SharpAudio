@@ -174,7 +174,15 @@ namespace SharpAudio.Codec
                     if (_hasSpectrumData)
                     {
                         _hasSpectrumData = false;
-                        tempBuf = _latestSample;
+
+                        if (_latestSample.Length < tempBuf.Length)
+                        {
+                            Array.Clear(tempBuf, 0, tempBuf.Length);
+                            Buffer.BlockCopy(_latestSample, 0, tempBuf, 0, _latestSample.Length);
+                        }
+                        else
+                            tempBuf = _latestSample;
+
                         gotData = true;
                     }
                 }
@@ -277,7 +285,7 @@ namespace SharpAudio.Codec
                         _chain.QueueData(Source, _silence, Format);
 
                         _decoder.Preload();
-                        
+
                         Source.Play();
                         _state = SoundStreamState.Paused;
                         _ = Task.Factory.StartNew(SpectrumLoop, TaskCreationOptions.LongRunning | TaskCreationOptions.AttachedToParent);
