@@ -11,50 +11,38 @@ namespace SharpAudio.Codec.FFMPEG
     {
         static FFmpegDecoder()
         {
-            var curPath = Path.GetDirectoryName(Assembly.GetEntryAssembly().Location);
+            var curPath = Path.GetDirectoryName(Assembly.GetEntryAssembly()?.Location);
 
             string runtimeId = null;
 
             if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
             {
-                if (RuntimeInformation.OSArchitecture == Architecture.X64)
+                runtimeId = RuntimeInformation.OSArchitecture switch
                 {
-                    runtimeId = "win7-x64";
-                }
-                else if (RuntimeInformation.OSArchitecture == Architecture.X86)
-                {
-                    runtimeId = "win7-x86";
-                }
+                    Architecture.X64 => "win7-x64",
+                    Architecture.X86 => "win7-x86",
+                    _ => runtimeId
+                };
             }
             else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
             {
-                if (RuntimeInformation.OSArchitecture == Architecture.X64)
+                runtimeId = RuntimeInformation.OSArchitecture switch
                 {
-                    runtimeId = "linux-x64";
-                }
-                else if (RuntimeInformation.OSArchitecture == Architecture.X86)
-                {
-                    runtimeId = "linux-x86";
-                }
-                else if (RuntimeInformation.OSArchitecture == Architecture.Arm)
-                {
-                    runtimeId = "linux-arm";
-                }
-                else if (RuntimeInformation.OSArchitecture == Architecture.Arm64)
-                {
-                    runtimeId = "linux-arm64";
-                }
+                    Architecture.X64 => "linux-x64",
+                    Architecture.X86 => "linux-x86",
+                    Architecture.Arm => "linux-arm",
+                    Architecture.Arm64 => "linux-arm64",
+                    _ => runtimeId
+                };
             }
             else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
             {
-                if (RuntimeInformation.OSArchitecture == Architecture.X64)
+                runtimeId = RuntimeInformation.OSArchitecture switch
                 {
-                    runtimeId = "osx-x64";
-                }
-                else if (RuntimeInformation.OSArchitecture == Architecture.X86)
-                {
-                    runtimeId = "osx-x86";
-                }
+                    Architecture.X64 => "osx-x64",
+                    Architecture.X86 => "osx-x86",
+                    _ => runtimeId
+                };
             }
 
             if (runtimeId != null)
