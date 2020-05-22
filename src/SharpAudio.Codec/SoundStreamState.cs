@@ -6,6 +6,7 @@ namespace SharpAudio.Codec
         PreparePlay,
         Playing,
         Paused,
+        Stopping,
         Stop,
     }
 }

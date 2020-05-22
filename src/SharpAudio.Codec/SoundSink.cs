@@ -1,5 +1,6 @@
 using System;
 using System.Threading.Tasks;
+using SharpAudio.SpectrumAnalysis;
 
 namespace SharpAudio.Codec
 {
@@ -7,14 +8,14 @@ namespace SharpAudio.Codec
     {
         private byte[] _silenceData;
         private AudioEngine _audioEngine;
+        private SpectrumProcessor _spectrumProcessor;
         private BufferChain _chain;
         private AudioSource _audioSource;
         private CircularBuffer _circBuffer;
         private byte[] _tempBuf;
         private static readonly TimeSpan SampleQuantum = TimeSpan.FromSeconds(0.05);
 
-
-        public SoundSink(AudioEngine audioEngine)
+        public SoundSink(AudioEngine audioEngine, SpectrumProcessor spectrumProcessor)
         {
             _format = new AudioFormat()
             {
@@ -25,6 +26,7 @@ namespace SharpAudio.Codec
 
             _silenceData = new byte[(int)(_format.Channels * _format.SampleRate * sizeof(ushort) * SampleQuantum.TotalSeconds)];
             _audioEngine = audioEngine;
+            _spectrumProcessor = spectrumProcessor;
             _chain = new BufferChain(_audioEngine);
             _circBuffer = new CircularBuffer(_silenceData.Length);
             _tempBuf = new byte[_silenceData.Length];
@@ -52,6 +54,7 @@ namespace SharpAudio.Codec
                 {
                     _circBuffer.Read(_tempBuf, 0, _tempBuf.Length);
                     _chain.QueueData(Source, _tempBuf, _format);
+                    _spectrumProcessor.Send(_tempBuf);
                 }
                 else if (cL < tL & cL > 0)
                 {
@@ -60,6 +63,7 @@ namespace SharpAudio.Codec
 
                     Buffer.BlockCopy(remainingSamples, 0, _tempBuf, 0, remainingSamples.Length);
                     _chain.QueueData(Source, _tempBuf, _format);
+                    _spectrumProcessor.Send(_tempBuf);
                 }
                 else
                 {
