@@ -128,7 +128,7 @@ namespace SharpAudio.Codec
                         if (_soundSink.NeedsNewSample)
                         {
                             var res = _decoder.GetSamples(SampleQuantum, ref _data);
-
+                            
                             if (res == 0)
                             {
                                 continue;
@@ -139,7 +139,7 @@ namespace SharpAudio.Codec
                                 _state = SoundStreamState.Stopping;
                                 continue;
                             }
-
+                            
                             _soundSink.Send(_data);
                             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Position)));
                         }
