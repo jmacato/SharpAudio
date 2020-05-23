@@ -1,4 +1,3 @@
-using System.ComponentModel;
 using System;
 using System.Numerics;
 using System.Threading.Tasks;
@@ -8,21 +7,34 @@ namespace SharpAudio.SpectrumAnalysis
 {
     public class SpectrumProcessor : IDisposable
     {
-        public event EventHandler<double[,]> FftDataReady;
-
-        private readonly int _fftLength = 512;
-        private readonly int _binaryExp;
-        private readonly int _totalCh = 2;
-        private readonly TimeSpan _sampleWait = TimeSpan.FromMilliseconds(20);
-        private bool _hasSpectrumData;
-        private byte[] _latestSample;
-        private readonly object _latesSampleLock = new object();
-        private volatile bool _isDisposed = false;
-        
         private const double ShortDivisor = short.MaxValue;
         private const double MinDbValue = -90;
         private const double MaxDbValue = 0;
         private const double DbScale = MaxDbValue - MinDbValue;
+        private readonly int _binaryExp;
+
+        private readonly int _fftLength = 512;
+        private readonly object _latesSampleLock = new object();
+        private readonly TimeSpan _sampleWait = TimeSpan.FromMilliseconds(20);
+        private readonly int _totalCh = 2;
+        private bool _hasSpectrumData;
+        private volatile bool _isDisposed;
+        private byte[] _latestSample;
+
+        public SpectrumProcessor()
+        {
+            _binaryExp = (int) Math.Log(_fftLength, 2.0);
+            _ = Task.Factory.StartNew(SpectrumLoop,
+                TaskCreationOptions.LongRunning | TaskCreationOptions.AttachedToParent);
+        }
+
+        public void Dispose()
+        {
+            FftDataReady = null;
+            _isDisposed = true;
+        }
+
+        public event EventHandler<double[,]> FftDataReady;
 
         private double[,] Fft2Double(Complex[,] fftResults, int ch, int fftLength)
         {
@@ -31,38 +43,29 @@ namespace SharpAudio.SpectrumAnalysis
             var processedFft = new double[ch, n];
 
             for (var c = 0; c < ch; c++)
-                for (var i = 0; i < n; i++)
-                {
-                    var complex = fftResults[c, i];
+            for (var i = 0; i < n; i++)
+            {
+                var complex = fftResults[c, i];
 
-                    var magnitude = complex.Magnitude;
-                    if (Math.Abs(magnitude) < Double.Epsilon)
-                    {
-                        continue;
-                    }
+                var magnitude = complex.Magnitude;
+                if (Math.Abs(magnitude) < double.Epsilon) continue;
 
-                    // decibel
-                    var result = (((20 * Math.Log10(magnitude)) - MinDbValue) / DbScale) * 1;
+                // decibel
+                var result = (20 * Math.Log10(magnitude) - MinDbValue) / DbScale * 1;
 
-                    // normalised decibel
-                    //var result = (((10 * Math.Log10((complex.Real * complex.Real) + (complex.Imaginary * complex.Imaginary))) - MinDbValue) / DbScale) * 1;
+                // normalised decibel
+                //var result = (((10 * Math.Log10((complex.Real * complex.Real) + (complex.Imaginary * complex.Imaginary))) - MinDbValue) / DbScale) * 1;
 
-                    // linear
-                    //var result = (magnitude * 9) * 1;
+                // linear
+                //var result = (magnitude * 9) * 1;
 
-                    // sqrt                
-                    //var result = ((Math.Sqrt(magnitude)) * 2) * 1;
+                // sqrt                
+                //var result = ((Math.Sqrt(magnitude)) * 2) * 1;
 
-                    processedFft[c, i] = Math.Max(0, result);
-                }
+                processedFft[c, i] = Math.Max(0, result);
+            }
 
             return processedFft;
-        }
-
-        public SpectrumProcessor()
-        {
-            _binaryExp = (int)Math.Log(_fftLength, 2.0);
-            _ = Task.Factory.StartNew(SpectrumLoop, TaskCreationOptions.LongRunning | TaskCreationOptions.AttachedToParent);
         }
 
         public void Send(byte[] data)
@@ -85,10 +88,7 @@ namespace SharpAudio.SpectrumAnalysis
             var complexSamples = new Complex[_totalCh, _fftLength];
             var cachedWindowVal = new double[_fftLength];
 
-            for (int i = 0; i < _fftLength; i++)
-            {
-                cachedWindowVal[i] = FastFourierTransform.HammingWindow(i, _fftLength);
-            }
+            for (var i = 0; i < _fftLength; i++) cachedWindowVal[i] = FastFourierTransform.HammingWindow(i, _fftLength);
 
             do
             {
@@ -110,21 +110,20 @@ namespace SharpAudio.SpectrumAnalysis
                             Buffer.BlockCopy(_latestSample, 0, tempBuf, 0, _latestSample.Length);
                         }
                         else
+                        {
                             tempBuf = _latestSample;
+                        }
 
                         gotData = true;
                     }
                 }
 
-                if (!gotData)
-                {
-                    continue;
-                }
+                if (!gotData) continue;
 
                 var rawSamplesShort = tempBuf.AsMemory().AsShorts().Slice(0, _fftLength * _totalCh);
 
                 // Channel de-interleaving
-                for (int i = 0; i < rawSamplesShort.Length; i++)
+                for (var i = 0; i < rawSamplesShort.Length; i++)
                 {
                     samplesDouble[curChByteRaw, channelCounters[curChByteRaw]] = rawSamplesShort.Span[i] / ShortDivisor;
                     channelCounters[curChByteRaw]++;
@@ -135,9 +134,9 @@ namespace SharpAudio.SpectrumAnalysis
                 Array.Clear(channelCounters, 0, channelCounters.Length);
 
                 // Process FFT for each channel.
-                for (int curCh = 0; curCh < _totalCh; curCh++)
+                for (var curCh = 0; curCh < _totalCh; curCh++)
                 {
-                    for (int i = 0; i < _fftLength; i++)
+                    for (var i = 0; i < _fftLength; i++)
                     {
                         var windowed_sample = samplesDouble[curCh, i] * cachedWindowVal[i];
                         complexSamples[curCh, i] = new Complex(windowed_sample, 0);
@@ -149,14 +148,7 @@ namespace SharpAudio.SpectrumAnalysis
                 FftDataReady?.Invoke(this, Fft2Double(complexSamples, _totalCh, _fftLength));
 
                 Array.Clear(samplesDouble, 0, samplesDouble.Length);
-
             } while (!_isDisposed);
-        }
-
-        public void Dispose()
-        {
-            FftDataReady = null;
-            _isDisposed = true;
         }
     }
 }

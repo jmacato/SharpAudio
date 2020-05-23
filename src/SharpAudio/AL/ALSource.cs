@@ -1,34 +1,10 @@
 ﻿using SharpAudio.ALBinding;
-using System;
 
 namespace SharpAudio.AL
 {
     internal sealed class ALSource : AudioSource
     {
-        private uint _source;
-
-        public override int BuffersQueued
-        {
-            get
-            {
-                RemoveProcessed();
-
-                AlNative.alGetSourcei(_source, AlNative.AL_BUFFERS_QUEUED, out int bufs);
-                return bufs;
-            }
-        }
-
-        public override float Volume
-        {
-            get { return _volume; }
-            set { _volume = value; AlNative.alSourcef(_source, AlNative.AL_GAIN, value); }
-        }
-
-        public override bool Looping
-        {
-            get { return _looping; }
-            set { _looping = value; AlNative.alSourcei(_source, AlNative.AL_LOOPING, value ? 1 : 0); }
-        }
+        private readonly uint _source;
 
         public ALSource()
         {
@@ -38,9 +14,40 @@ namespace SharpAudio.AL
             _source = sources[0];
         }
 
+        public override int BuffersQueued
+        {
+            get
+            {
+                RemoveProcessed();
+
+                AlNative.alGetSourcei(_source, AlNative.AL_BUFFERS_QUEUED, out var bufs);
+                return bufs;
+            }
+        }
+
+        public override float Volume
+        {
+            get => _volume;
+            set
+            {
+                _volume = value;
+                AlNative.alSourcef(_source, AlNative.AL_GAIN, value);
+            }
+        }
+
+        public override bool Looping
+        {
+            get => _looping;
+            set
+            {
+                _looping = value;
+                AlNative.alSourcei(_source, AlNative.AL_LOOPING, value ? 1 : 0);
+            }
+        }
+
         public override void Dispose()
         {
-            AlNative.alDeleteSources(1, new uint[] { _source });
+            AlNative.alDeleteSources(1, new[] {_source});
             ALEngine.checkAlError();
         }
 
@@ -51,8 +58,8 @@ namespace SharpAudio.AL
 
         public override bool IsPlaying()
         {
-            AlNative.alGetSourcei(_source, AlNative.AL_SOURCE_STATE, out int state);
-            bool playing = state == AlNative.AL_PLAYING;
+            AlNative.alGetSourcei(_source, AlNative.AL_SOURCE_STATE, out var state);
+            var playing = state == AlNative.AL_PLAYING;
             return playing;
         }
 
@@ -65,12 +72,12 @@ namespace SharpAudio.AL
         private void RemoveProcessed()
         {
             //before querying new data check if sth was processed already:
-            AlNative.alGetSourcei(_source, AlNative.AL_BUFFERS_PROCESSED, out int processed);
+            AlNative.alGetSourcei(_source, AlNative.AL_BUFFERS_PROCESSED, out var processed);
             ALEngine.checkAlError();
 
             while (processed > 0)
             {
-                var bufs = new uint[] { 1 };
+                var bufs = new uint[] {1};
                 AlNative.alSourceUnqueueBuffers(_source, 1, bufs);
                 processed--;
             }
@@ -80,8 +87,8 @@ namespace SharpAudio.AL
         {
             RemoveProcessed();
 
-            var alBuffer = (ALBuffer)buffer;
-            AlNative.alSourceQueueBuffers(_source, 1, new uint[] { alBuffer.Buffer });
+            var alBuffer = (ALBuffer) buffer;
+            AlNative.alSourceQueueBuffers(_source, 1, new[] {alBuffer.Buffer});
             ALEngine.checkAlError();
         }
 

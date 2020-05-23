@@ -6,19 +6,19 @@ namespace SharpAudio.XA2
     {
         private DataStream _dataStream;
 
-        public SharpDX.XAudio2.AudioBuffer Buffer { get; }
-
-        public int SizeInBytes { get; private set; }
-        public int TotalSamples => SizeInBytes / Format.BytesPerSample;
-
         public XA2Buffer()
         {
             Buffer = new SharpDX.XAudio2.AudioBuffer();
         }
 
+        public SharpDX.XAudio2.AudioBuffer Buffer { get; }
+
+        public int SizeInBytes { get; private set; }
+        public int TotalSamples => SizeInBytes / Format.BytesPerSample;
+
         public override unsafe void BufferData<T>(T[] buffer, AudioFormat format)
         {
-            int sizeInBytes = sizeof(T) * buffer.Length;
+            var sizeInBytes = sizeof(T) * buffer.Length;
 
             _dataStream?.Dispose();
             _dataStream = new DataStream(sizeInBytes, true, true);
@@ -34,6 +34,6 @@ namespace SharpAudio.XA2
         public override void Dispose()
         {
             _dataStream?.Dispose();
-         }
+        }
     }
 }

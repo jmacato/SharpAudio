@@ -1,14 +1,34 @@
-using System.Runtime.InteropServices;
 using System;
-using FFmpeg.AutoGen;
 using System.IO;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Threading.Tasks;
+using FFmpeg.AutoGen;
 
 namespace SharpAudio.Codec.FFMPEG
 {
     public class FFmpegDecoder : Decoder
     {
+        private const int fsStreamSize = 8192;
+        private readonly int _DESIRED_CHANNEL_COUNT = 2;
+        private readonly AVSampleFormat _DESIRED_SAMPLE_FORMAT = AVSampleFormat.AV_SAMPLE_FMT_S16;
+        private readonly int _DESIRED_SAMPLE_RATE = 44_100;
+        private readonly byte[] ffmpegFSBuf = new byte[fsStreamSize];
+        private readonly int sampleByteSize;
+        private readonly Stream targetStream;
+        private volatile bool _isDecoderFinished;
+        private bool _isFinished;
+        private CircularBuffer _slidestream;
+        private bool anchorNewPos;
+        private avio_alloc_context_read_packet avioRead;
+        private avio_alloc_context_seek avioSeek;
+        private TimeSpan curPos;
+        private volatile bool doSeek;
+        private FFmpegPointers ff;
+        private TimeSpan seekTimeTarget;
+        private int stream_index;
+        private byte[] tempSampleBuf;
+
         static FFmpegDecoder()
         {
             var curPath = Path.GetDirectoryName(Assembly.GetEntryAssembly()?.Location);
@@ -16,16 +36,13 @@ namespace SharpAudio.Codec.FFMPEG
             string runtimeId = null;
 
             if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-            {
                 runtimeId = RuntimeInformation.OSArchitecture switch
                 {
                     Architecture.X64 => "win7-x64",
                     Architecture.X86 => "win7-x86",
                     _ => runtimeId
                 };
-            }
             else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
-            {
                 runtimeId = RuntimeInformation.OSArchitecture switch
                 {
                     Architecture.X64 => "linux-x64",
@@ -34,40 +51,26 @@ namespace SharpAudio.Codec.FFMPEG
                     Architecture.Arm64 => "linux-arm64",
                     _ => runtimeId
                 };
-            }
             else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
-            {
                 runtimeId = RuntimeInformation.OSArchitecture switch
                 {
                     Architecture.X64 => "osx-x64",
                     Architecture.X86 => "osx-x86",
                     _ => runtimeId
                 };
-            }
 
             if (runtimeId != null)
                 ffmpeg.RootPath = Path.Combine(curPath, $"runtimes/{runtimeId}/native/");
         }
 
-        private const int fsStreamSize = 8192;
-        private byte[] ffmpegFSBuf = new byte[fsStreamSize];
-        private Stream targetStream;
-        private int sampleByteSize;
-        private avio_alloc_context_read_packet avioRead;
-        private avio_alloc_context_seek avioSeek;
-        private int stream_index;
-        private bool _isFinished;
-        private FFmpegPointers ff = new FFmpegPointers();
-        private byte[] tempSampleBuf;
-        private CircularBuffer _slidestream;
-        private TimeSpan seekTimeTarget;
-        private volatile bool doSeek = false;
-        private TimeSpan curPos;
-        private bool anchorNewPos;
-        private volatile bool _isDecoderFinished;
-        private readonly AVSampleFormat _DESIRED_SAMPLE_FORMAT = AVSampleFormat.AV_SAMPLE_FMT_S16;
-        private readonly int _DESIRED_SAMPLE_RATE = 44_100;
-        private readonly int _DESIRED_CHANNEL_COUNT = 2;
+        public FFmpegDecoder(Stream src)
+        {
+            targetStream = src;
+            sampleByteSize = _DESIRED_SAMPLE_RATE * _DESIRED_CHANNEL_COUNT * sizeof(ushort);
+
+            Ffmpeg_Initialize();
+        }
+
         public override bool IsFinished => _isFinished;
         public override TimeSpan Position => curPos;
         public override TimeSpan Duration => base.Duration;
@@ -78,7 +81,7 @@ namespace SharpAudio.Codec.FFMPEG
             {
                 var readCount = targetStream.Read(ffmpegFSBuf, 0, ffmpegFSBuf.Length);
                 if (readCount > 0)
-                    Marshal.Copy(ffmpegFSBuf, 0, (IntPtr)targetBuffer, readCount);
+                    Marshal.Copy(ffmpegFSBuf, 0, (IntPtr) targetBuffer, readCount);
 
                 return readCount;
             }
@@ -99,84 +102,62 @@ namespace SharpAudio.Codec.FFMPEG
                 case 0:
                 case 1:
                 case 2:
-                    origin = (SeekOrigin)whence;
+                    origin = (SeekOrigin) whence;
                     break;
                 default:
                     return ffmpeg.AVERROR_EOF;
-
             }
 
             targetStream.Seek(offset, origin);
             return targetStream.Position;
         }
 
-        public FFmpegDecoder(Stream src)
-        {
-            targetStream = src;
-            sampleByteSize = _DESIRED_SAMPLE_RATE * _DESIRED_CHANNEL_COUNT * sizeof(ushort);
-
-            Ffmpeg_Initialize();
-        }
-
-
         private unsafe void Ffmpeg_Initialize()
         {
-            var inputBuffer = (byte*)ffmpeg.av_malloc((ulong)fsStreamSize);
+            var inputBuffer = (byte*) ffmpeg.av_malloc(fsStreamSize);
 
             avioRead = Read;
             avioSeek = Seek;
 
             ff.ioContext = ffmpeg.avio_alloc_context(inputBuffer, fsStreamSize, 0, null, avioRead, null, avioSeek);
 
-            if ((int)ff.ioContext == 0)
-            {
-                throw new FormatException("FFMPEG: Unable to allocate IO stream context.");
-            }
+            if ((int) ff.ioContext == 0) throw new FormatException("FFMPEG: Unable to allocate IO stream context.");
 
             ff.format_context = ffmpeg.avformat_alloc_context();
             ff.format_context->pb = ff.ioContext;
-            ff.format_context->flags |= ffmpeg.AVFMT_FLAG_CUSTOM_IO | ffmpeg.AVFMT_FLAG_GENPTS | ffmpeg.AVFMT_FLAG_DISCARD_CORRUPT;
+            ff.format_context->flags |= ffmpeg.AVFMT_FLAG_CUSTOM_IO | ffmpeg.AVFMT_FLAG_GENPTS |
+                                        ffmpeg.AVFMT_FLAG_DISCARD_CORRUPT;
 
             fixed (AVFormatContext** fmt2 = &ff.format_context)
-                if (ffmpeg.avformat_open_input(fmt2, "", null, null) != 0)
-                {
-                    throw new FormatException("FFMPEG: Could not open media stream.");
-                }
-
-            if (ffmpeg.avformat_find_stream_info(ff.format_context, null) < 0)
             {
-                throw new FormatException("FFMPEG: Could not retrieve stream info from IO stream");
+                if (ffmpeg.avformat_open_input(fmt2, "", null, null) != 0)
+                    throw new FormatException("FFMPEG: Could not open media stream.");
             }
 
+            if (ffmpeg.avformat_find_stream_info(ff.format_context, null) < 0)
+                throw new FormatException("FFMPEG: Could not retrieve stream info from IO stream");
+
             // Find the index of the first audio stream
-            this.stream_index = -1;
-            for (int i = 0; i < ff.format_context->nb_streams; i++)
-            {
+            stream_index = -1;
+            for (var i = 0; i < ff.format_context->nb_streams; i++)
                 if (ff.format_context->streams[i]->codec->codec_type == AVMediaType.AVMEDIA_TYPE_AUDIO)
                 {
                     stream_index = i;
                     break;
                 }
-            }
 
             if (stream_index == -1)
-            {
                 throw new FormatException("FFMPEG: Could not retrieve audio stream from IO stream.");
-            }
 
             ff.av_stream = ff.format_context->streams[stream_index];
             ff.av_codec = ff.av_stream->codec;
 
             if (ffmpeg.avcodec_open2(ff.av_codec, ffmpeg.avcodec_find_decoder(ff.av_codec->codec_id), null) < 0)
-            {
                 throw new FormatException("FFMPEG: Failed to open decoder for stream #{stream_index} in IO stream.");
-            }
 
             // Fixes SWR @ 0x2192200] Input channel count and layout are unset error.
             if (ff.av_codec->channel_layout == 0)
-            {
-                ff.av_codec->channel_layout = (ulong)ffmpeg.av_get_default_channel_layout(ff.av_codec->channels);
-            }
+                ff.av_codec->channel_layout = (ulong) ffmpeg.av_get_default_channel_layout(ff.av_codec->channels);
 
             // ff.av_codec->request_channel_layout = (ulong)ffmpeg.av_get_default_channel_layout(ff.av_codec->channels);
             // ff.av_codec->request_sample_fmt = _DESIRED_SAMPLE_FORMAT;
@@ -184,26 +165,24 @@ namespace SharpAudio.Codec.FFMPEG
             SetAudioFormat();
 
             ff.swr_context = ffmpeg.swr_alloc_set_opts(null,
-                                                      ffmpeg.av_get_default_channel_layout(_DESIRED_CHANNEL_COUNT),
-                                                      _DESIRED_SAMPLE_FORMAT,
-                                                      _DESIRED_SAMPLE_RATE,
-                                                      (long)ff.av_codec->channel_layout,
-                                                      ff.av_codec->sample_fmt,
-                                                      ff.av_codec->sample_rate,
-                                                      0,
-                                                      null);
+                ffmpeg.av_get_default_channel_layout(_DESIRED_CHANNEL_COUNT),
+                _DESIRED_SAMPLE_FORMAT,
+                _DESIRED_SAMPLE_RATE,
+                (long) ff.av_codec->channel_layout,
+                ff.av_codec->sample_fmt,
+                ff.av_codec->sample_rate,
+                0,
+                null);
 
             ffmpeg.swr_init(ff.swr_context);
 
             if (ffmpeg.swr_is_initialized(ff.swr_context) == 0)
-            {
-                throw new FormatException($"FFMPEG: Resampler has not been properly initialized");
-            }
+                throw new FormatException("FFMPEG: Resampler has not been properly initialized");
 
             ff.av_packet = ffmpeg.av_packet_alloc();
             ff.av_src_frame = ffmpeg.av_frame_alloc();
 
-            tempSampleBuf = new byte[(int)(_audioFormat.SampleRate * _audioFormat.Channels * 5)];
+            tempSampleBuf = new byte[_audioFormat.SampleRate * _audioFormat.Channels * 5];
             _slidestream = new CircularBuffer(tempSampleBuf.Length);
 
             Task.Factory.StartNew(MainLoop, TaskCreationOptions.LongRunning | TaskCreationOptions.AttachedToParent);
@@ -214,13 +193,14 @@ namespace SharpAudio.Codec.FFMPEG
             _audioFormat.SampleRate = _DESIRED_SAMPLE_RATE;
             _audioFormat.Channels = _DESIRED_CHANNEL_COUNT;
             _audioFormat.BitsPerSample = 16;
-            _numSamples = (int)(ff.format_context->duration / (float)ffmpeg.AV_TIME_BASE * _DESIRED_SAMPLE_RATE * _DESIRED_CHANNEL_COUNT);
+            _numSamples = (int) (ff.format_context->duration / (float) ffmpeg.AV_TIME_BASE * _DESIRED_SAMPLE_RATE *
+                                 _DESIRED_CHANNEL_COUNT);
         }
 
         public async Task MainLoop()
         {
-            int frameFinished = 0;
-            int count = 0;
+            var frameFinished = 0;
+            var count = 0;
 
             do
             {
@@ -236,7 +216,7 @@ namespace SharpAudio.Codec.FFMPEG
                 {
                     if (doSeek)
                     {
-                        long seek = (long)(seekTimeTarget.TotalSeconds / ffmpeg.av_q2d(ff.av_stream->time_base));
+                        var seek = (long) (seekTimeTarget.TotalSeconds / ffmpeg.av_q2d(ff.av_stream->time_base));
                         ffmpeg.av_seek_frame(ff.format_context, stream_index, seek, ffmpeg.AVSEEK_FLAG_BACKWARD);
                         ffmpeg.avcodec_flush_buffers(ff.av_stream->codec);
                         ff.av_packet = ffmpeg.av_packet_alloc();
@@ -250,23 +230,20 @@ namespace SharpAudio.Codec.FFMPEG
                     {
                         if (ff.av_packet->stream_index == stream_index)
                         {
-
-#pragma warning disable 
-                            int res = ffmpeg.avcodec_decode_audio4(ff.av_stream->codec, ff.av_src_frame, &frameFinished, ff.av_packet);
+#pragma warning disable
+                            var res = ffmpeg.avcodec_decode_audio4(ff.av_stream->codec, ff.av_src_frame, &frameFinished,
+                                ff.av_packet);
 #pragma warning restore
 
                             if (res == 0)
                                 continue;
 
-                            if (ff.av_src_frame->pts == ffmpeg.AV_NOPTS_VALUE)
-                            {
-                                continue;
-                            }
-                            
+                            if (ff.av_src_frame->pts == ffmpeg.AV_NOPTS_VALUE) continue;
+
                             if (anchorNewPos)
                             {
                                 double pts = ff.av_src_frame->pts;
-                                pts *= ff.av_stream->time_base.num / (double)ff.av_stream->time_base.den;
+                                pts *= ff.av_stream->time_base.num / (double) ff.av_stream->time_base.den;
                                 curPos = TimeSpan.FromSeconds(pts);
                                 anchorNewPos = false;
                             }
@@ -294,12 +271,13 @@ namespace SharpAudio.Codec.FFMPEG
             if (res > 0)
             {
                 // Console.WriteLine(_slidestream.Length / (double)(sampleByteSize));
-                var x = res / (double)(sampleByteSize);
+                var x = res / (double) sampleByteSize;
                 // Console.WriteLine(x);
                 curPos += TimeSpan.FromSeconds(x);
                 return res;
             }
-            else if (res == 0 & _isDecoderFinished)
+
+            if ((res == 0) & _isDecoderFinished)
             {
                 _isFinished = true;
                 return -1;
@@ -312,30 +290,31 @@ namespace SharpAudio.Codec.FFMPEG
         {
             ff.av_dst_frame = ffmpeg.av_frame_alloc();
             ff.av_dst_frame->sample_rate = _DESIRED_SAMPLE_RATE;
-            ff.av_dst_frame->format = (int)_DESIRED_SAMPLE_FORMAT;
+            ff.av_dst_frame->format = (int) _DESIRED_SAMPLE_FORMAT;
             ff.av_dst_frame->channels = _DESIRED_CHANNEL_COUNT;
-            ff.av_dst_frame->channel_layout = (ulong)ffmpeg.av_get_default_channel_layout(ff.av_dst_frame->channels);
+            ff.av_dst_frame->channel_layout = (ulong) ffmpeg.av_get_default_channel_layout(ff.av_dst_frame->channels);
 
             ffmpeg.swr_convert_frame(ff.swr_context, ff.av_dst_frame, ff.av_src_frame);
 
-            int bufferSize = ffmpeg.av_samples_get_buffer_size(null,
-                                ff.av_dst_frame->channels,
-                                ff.av_dst_frame->nb_samples,
-                                (AVSampleFormat)ff.av_dst_frame->format,
-                                1);
+            var bufferSize = ffmpeg.av_samples_get_buffer_size(null,
+                ff.av_dst_frame->channels,
+                ff.av_dst_frame->nb_samples,
+                (AVSampleFormat) ff.av_dst_frame->format,
+                1);
 
-            if (bufferSize <= 0)
-            {
-                throw new Exception($"ffmpeg returned an invalid buffer size {bufferSize}");
-            }
+            if (bufferSize <= 0) throw new Exception($"ffmpeg returned an invalid buffer size {bufferSize}");
 
             count = bufferSize;
 
             fixed (byte* h = &data[0])
+            {
                 Buffer.MemoryCopy(ff.av_dst_frame->data[0], h, bufferSize, bufferSize);
+            }
 
             fixed (AVFrame** x = &ff.av_dst_frame)
+            {
                 ffmpeg.av_frame_free(x);
+            }
         }
 
         public override void TrySeek(TimeSpan time)
@@ -354,7 +333,6 @@ namespace SharpAudio.Codec.FFMPEG
 
         public override void Preload()
         {
-
         }
     }
 }

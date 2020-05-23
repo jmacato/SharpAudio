@@ -1,83 +1,27 @@
-﻿using System.ComponentModel;
-using SharpAudio.Codec.FFMPEG;
-using System;
+﻿using System;
+using System.ComponentModel;
 using System.IO;
 using System.Threading.Tasks;
-using SharpAudio.SpectrumAnalysis;
-using System.Numerics;
+using SharpAudio.Codec.FFMPEG;
 
 namespace SharpAudio.Codec
 {
     public sealed class SoundStream : IDisposable, INotifyPropertyChanged
     {
-        private Decoder _decoder;
-        private byte[] _silence;
-        private AudioBuffer _buffer;
-        private byte[] _data;
         private readonly TimeSpan SampleQuantum = TimeSpan.FromSeconds(0.05);
         private readonly TimeSpan SampleWait = TimeSpan.FromMilliseconds(1);
+        private AudioBuffer _buffer;
+        private byte[] _data;
+        private readonly Decoder _decoder;
+        private byte[] _silence;
 
-        public event PropertyChangedEventHandler PropertyChanged;
-
-        /// <summary>
-        /// The audio format of this stream
-        /// </summary>
-        public AudioFormat Format => _decoder.Format;
-
-        /// <summary>
-        /// The metadata of the decoded data;
-        /// </summary>
-        // public AudioMetadata Metadata => _decoder.Metadata;
-
-        /// <summary>
-        /// The underlying source
-        /// </summary>
-        // public AudioSource Source { get; private set; }
-
-        /// <summary>
-        /// Wether or not the audio is finished
-        /// </summary>
-        public bool IsPlaying => _state == SoundStreamState.Playing;
-
-        /// <summary>
-        /// Wether or not the audio is streamed
-        /// </summary>
-        public bool IsStreamed { get; }
-
-        private SoundSink _soundSink;
- 
-        /// <summary>
-        /// The volume of the source
-        /// </summary>
-        public float Volume
-        {
-            get => _soundSink?.Source.Volume ?? 0;
-            set => _soundSink.Source.Volume = value;
-        }
-
-        /// <summary>
-        /// Duration when provided by the decoder. Otherwise 0
-        /// </summary>
-        public TimeSpan Duration => _decoder.Duration;
-
-        /// <summary>
-        /// Current position inside the stream
-        /// </summary>
-        public TimeSpan Position => _decoder.Position;
+        private readonly SoundSink _soundSink;
 
         private volatile SoundStreamState _state = SoundStreamState.PreparePlay;
         private volatile bool hasDecodedSamples = false;
 
-        public SoundStreamState State => _state;
-
-        public void TrySeek(TimeSpan seek)
-        {
-            _soundSink.ClearBuffers();
-            _decoder.TrySeek(seek);
-        }
-
         /// <summary>
-        /// Initializes a new instance of the <see cref="SoundStream"/> class.
+        ///     Initializes a new instance of the <see cref="SoundStream" /> class.
         /// </summary>
         /// <param name="stream">The sound stream.</param>
         /// <param name="engine">The audio engine</param>
@@ -96,7 +40,58 @@ namespace SharpAudio.Codec
         }
 
         /// <summary>
-        /// Start playing the soundstream 
+        ///     The audio format of this stream
+        /// </summary>
+        public AudioFormat Format => _decoder.Format;
+
+        /// <summary>
+        ///     Whether or not the audio is finished
+        /// </summary>
+        public bool IsPlaying => _state == SoundStreamState.Playing;
+
+        /// <summary>
+        ///     Whether or not the audio is streamed
+        /// </summary>
+        public bool IsStreamed { get; }
+
+        /// <summary>
+        ///     The volume of the source
+        /// </summary>
+        public float Volume
+        {
+            get => _soundSink?.Source.Volume ?? 0;
+            set => _soundSink.Source.Volume = value;
+        }
+
+        /// <summary>
+        ///     Duration when provided by the decoder. Otherwise 0
+        /// </summary>
+        public TimeSpan Duration => _decoder.Duration;
+
+        /// <summary>
+        ///     Current position inside the stream
+        /// </summary>
+        public TimeSpan Position => _decoder.Position;
+
+        public SoundStreamState State => _state;
+
+        public void Dispose()
+        {
+            _state = SoundStreamState.Stop;
+            _decoder?.Dispose();
+            _buffer?.Dispose();
+        }
+
+        public event PropertyChangedEventHandler PropertyChanged;
+
+        public void TrySeek(TimeSpan seek)
+        {
+            _soundSink.ClearBuffers();
+            _decoder.TrySeek(seek);
+        }
+
+        /// <summary>
+        ///     Start playing the soundstream
         /// </summary>
         public void PlayPause()
         {
@@ -135,9 +130,11 @@ namespace SharpAudio.Codec
                             var res = _decoder.GetSamples(SampleQuantum, ref _data);
 
                             if (res == 0)
+                            {
                                 continue;
+                            }
 
-                            else if (res == -1)
+                            if (res == -1)
                             {
                                 _state = SoundStreamState.Stopping;
                                 continue;
@@ -165,7 +162,6 @@ namespace SharpAudio.Codec
                 }
 
                 await Task.Delay(SampleWait);
-
             } while (_state != SoundStreamState.Stop);
 
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Position)));
@@ -173,18 +169,11 @@ namespace SharpAudio.Codec
         }
 
         /// <summary>
-        /// Stop the soundstream
+        ///     Stop the soundstream
         /// </summary>
         public void Stop()
         {
             _state = SoundStreamState.Stop;
-        }
-
-        public void Dispose()
-        {
-            _state = SoundStreamState.Stop;
-            _decoder?.Dispose();
-            _buffer?.Dispose();
         }
     }
 }

@@ -6,39 +6,56 @@ namespace SharpAudio.Codec
 {
     public sealed class SoundSink : IDisposable
     {
-        private byte[] _silenceData;
-        private AudioEngine _audioEngine;
-        private SpectrumProcessor _spectrumProcessor;
-        private BufferChain _chain;
-        private AudioSource _audioSource;
-        private CircularBuffer _circBuffer;
-        private byte[] _tempBuf;
         private static readonly TimeSpan SampleQuantum = TimeSpan.FromSeconds(0.05);
+        private readonly BufferChain _chain;
+        private readonly CircularBuffer _circBuffer;
+        private readonly AudioFormat _format;
+        private readonly byte[] _silenceData;
+        private readonly SpectrumProcessor _spectrumProcessor;
+        private readonly byte[] _tempBuf;
+
+        private volatile bool _isDisposed;
 
         public SoundSink(AudioEngine audioEngine, SpectrumProcessor spectrumProcessor)
         {
-            _format = new AudioFormat()
+            _format = new AudioFormat
             {
                 SampleRate = 44_100,
                 Channels = 2,
                 BitsPerSample = 16
             };
 
-            _silenceData = new byte[(int)(_format.Channels * _format.SampleRate * sizeof(ushort) * SampleQuantum.TotalSeconds)];
-            _audioEngine = audioEngine;
+            _silenceData =
+                new byte[(int) (_format.Channels * _format.SampleRate * sizeof(ushort) * SampleQuantum.TotalSeconds)];
+            Engine = audioEngine;
             _spectrumProcessor = spectrumProcessor;
-            _chain = new BufferChain(_audioEngine);
+            _chain = new BufferChain(Engine);
             _circBuffer = new CircularBuffer(_silenceData.Length);
             _tempBuf = new byte[_silenceData.Length];
 
             Task.Factory.StartNew(MainLoop, TaskCreationOptions.LongRunning | TaskCreationOptions.AttachedToParent);
         }
 
+        public AudioEngine Engine { get; }
+
+        public AudioSource Source { get; private set; }
+
+        public bool NeedsNewSample => _circBuffer.Length < _silenceData.Length;
+
+        public void Dispose()
+        {
+            if (!_isDisposed)
+            {
+                Source.Stop();
+                Source.Dispose();
+            }
+        }
+
         private async Task MainLoop()
         {
-            _audioSource = _audioEngine.CreateSource();
+            Source = Engine.CreateSource();
             _chain.QueueData(Source, _silenceData, _format);
-            _audioSource.Play();
+            Source.Play();
 
             while (!_isDisposed)
             {
@@ -56,7 +73,7 @@ namespace SharpAudio.Codec
                     _chain.QueueData(Source, _tempBuf, _format);
                     _spectrumProcessor.Send(_tempBuf);
                 }
-                else if (cL < tL & cL > 0)
+                else if ((cL < tL) & (cL > 0))
                 {
                     var remainingSamples = new byte[cL];
                     _circBuffer.Read(remainingSamples, 0, remainingSamples.Length);
@@ -69,23 +86,6 @@ namespace SharpAudio.Codec
                 {
                     _chain.QueueData(Source, _silenceData, _format);
                 }
-            }
-        }
-
-        public AudioEngine Engine => _audioEngine;
-        public AudioSource Source => _audioSource;
-
-        public bool NeedsNewSample => _circBuffer.Length < _silenceData.Length;
-
-        private volatile bool _isDisposed;
-        private AudioFormat _format;
-
-        public void Dispose()
-        {
-            if (!_isDisposed)
-            {
-                Source.Stop();
-                Source.Dispose();
             }
         }
 

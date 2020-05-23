@@ -1,10 +1,6 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
-
-namespace SharpAudio.ALBinding
+﻿namespace SharpAudio.ALBinding
 {
-    public static unsafe partial class AlNative
+    public static partial class AlNative
     {
         public const int AL_FORMAT_MONO_FLOAT32 = 0x10010;
         public const int AL_FORMAT_STEREO_FLOAT32 = 0x10011;

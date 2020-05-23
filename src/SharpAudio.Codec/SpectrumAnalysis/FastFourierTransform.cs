@@ -1,14 +1,13 @@
 ﻿using System;
 using System.Numerics;
-using FFmpeg.AutoGen;
 
 namespace SharpAudio.SpectrumAnalysis
 {
     public static class FastFourierTransform
     {
         /// <summary>
-        /// This computes an in-place complex-to-complex FFT 
-        /// x and y are the real and imaginary arrays of 2^m points.
+        ///     This computes an in-place complex-to-complex FFT
+        ///     x and y are the real and imaginary arrays of 2^m points.
         /// </summary>
         public static void ProcessFFT(bool forward, int m, Complex[,] complexSamples, int curCh)
         {
@@ -32,6 +31,7 @@ namespace SharpAudio.SpectrumAnalysis
                     complexSamples[curCh, i] = complexSamples[curCh, j];
                     complexSamples[curCh, j] = new Complex(tx, ty);
                 }
+
                 k = i2;
 
                 while (k <= j)
@@ -39,6 +39,7 @@ namespace SharpAudio.SpectrumAnalysis
                     j -= k;
                     k >>= 1;
                 }
+
                 j += k;
             }
 
@@ -59,13 +60,16 @@ namespace SharpAudio.SpectrumAnalysis
                         i1 = i + l1;
                         t1 = u1 * complexSamples[curCh, i1].Real - u2 * complexSamples[curCh, i1].Imaginary;
                         t2 = u1 * complexSamples[curCh, i1].Imaginary + u2 * complexSamples[curCh, i1].Real;
-                        complexSamples[curCh, i1] = new Complex(complexSamples[curCh, i].Real - t1, complexSamples[curCh, i].Imaginary - t2);
+                        complexSamples[curCh, i1] = new Complex(complexSamples[curCh, i].Real - t1,
+                            complexSamples[curCh, i].Imaginary - t2);
                         complexSamples[curCh, i] += new Complex(t1, t2);
                     }
+
                     z = u1 * c1 - u2 * c2;
                     u2 = u1 * c2 + u2 * c1;
                     u1 = z;
                 }
+
                 c2 = Math.Sqrt((1.0f - c1) / 2.0f);
                 if (forward)
                     c2 = -c2;
@@ -74,46 +78,43 @@ namespace SharpAudio.SpectrumAnalysis
 
             // Scaling for forward transform 
             if (forward)
-            {
                 for (i = 0; i < n; i++)
-                {
                     complexSamples[curCh, i] /= n;
-                }
-            }
         }
 
         /// <summary>
-        /// Applies a Hamming Window
+        ///     Applies a Hamming Window
         /// </summary>
         /// <param name="n">Index into frame</param>
         /// <param name="frameSize">Frame size (e.g. 1024)</param>
         /// <returns>Multiplier for Hamming window</returns>
         public static double HammingWindow(int n, int frameSize)
         {
-            return 0.54 - 0.46 * Math.Cos((2 * Math.PI * n) / (frameSize - 1));
+            return 0.54 - 0.46 * Math.Cos(2 * Math.PI * n / (frameSize - 1));
         }
 
         /// <summary>
-        /// Applies a Hann Window
+        ///     Applies a Hann Window
         /// </summary>
         /// <param name="n">Index into frame</param>
         /// <param name="frameSize">Frame size (e.g. 1024)</param>
         /// <returns>Multiplier for Hann window</returns>
         public static double HannWindow(int n, int frameSize)
         {
-            return 0.5 * (1 - Math.Cos((2 * Math.PI * n) / (frameSize - 1)));
+            return 0.5 * (1 - Math.Cos(2 * Math.PI * n / (frameSize - 1)));
         }
 
         /// <summary>
-        /// Applies a Blackman-Harris Window
+        ///     Applies a Blackman-Harris Window
         /// </summary>
         /// <param name="n">Index into frame</param>
         /// <param name="frameSize">Frame size (e.g. 1024)</param>
         /// <returns>Multiplier for Blackmann-Harris window</returns>
         public static double BlackmannHarrisWindow(int n, int frameSize)
         {
-            return 0.35875 - (0.48829 * Math.Cos((2 * Math.PI * n) / (frameSize - 1))) + (0.14128 * Math.Cos((4 * Math.PI * n) / (frameSize - 1))) - (0.01168 * Math.Cos((6 * Math.PI * n) / (frameSize - 1)));
+            return 0.35875 - 0.48829 * Math.Cos(2 * Math.PI * n / (frameSize - 1)) +
+                   0.14128 * Math.Cos(4 * Math.PI * n / (frameSize - 1)) -
+                   0.01168 * Math.Cos(6 * Math.PI * n / (frameSize - 1));
         }
-
     }
 }
