@@ -29,6 +29,7 @@ namespace SharpAudio.Codec.FFMPEG
         private TimeSpan seekTimeTarget;
         private int stream_index;
         private byte[] tempSampleBuf;
+        private volatile bool _isDisposed;
 
         static FFmpegDecoder()
         {
@@ -186,11 +187,9 @@ namespace SharpAudio.Codec.FFMPEG
             tempSampleBuf = new byte[_audioFormat.SampleRate * _audioFormat.Channels * 5];
             _slidestream = new CircularBuffer(tempSampleBuf.Length);
 
-
             var decoderThread = new Thread(MainLoop);
             decoderThread.Start();
-            
-            // Task.Factory.StartNew(MainLoop, TaskCreationOptions.LongRunning | TaskCreationOptions.AttachedToParent);
+
         }
 
         private unsafe void SetAudioFormat()
@@ -207,11 +206,8 @@ namespace SharpAudio.Codec.FFMPEG
             var frameFinished = 0;
             var count = 0;
 
-            do
+            while (!_isDecoderFinished | !_isDisposed)
             {
-                if (_isDecoderFinished)
-                    return;
-
                 Thread.Sleep(1);
 
                 if (_slidestream.Length > sampleByteSize)
@@ -265,7 +261,7 @@ namespace SharpAudio.Codec.FFMPEG
                         _isDecoderFinished = true;
                     }
                 }
-            } while (!_isDecoderFinished);
+            }
         }
 
         public override long GetSamples(int samples, ref byte[] data)
@@ -336,11 +332,13 @@ namespace SharpAudio.Codec.FFMPEG
 
         public override void Dispose()
         {
-            targetStream?.Dispose();
-        }
-
-        public override void Preload()
-        {
+            if (!_isDisposed)
+            {
+                if (targetStream.CanSeek)
+                    targetStream.Seek(0, SeekOrigin.Begin);
+                    
+                _isDisposed = true;
+            }
         }
     }
 }

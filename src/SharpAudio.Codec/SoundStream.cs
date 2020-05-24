@@ -13,7 +13,7 @@ namespace SharpAudio.Codec
         private readonly TimeSpan SampleWait = TimeSpan.FromMilliseconds(1);
         private AudioBuffer _buffer;
         private byte[] _data;
-        private readonly Decoder _decoder;
+        private Decoder _decoder;
         private byte[] _silence;
 
         private readonly SoundSink _soundSink;
@@ -33,15 +33,15 @@ namespace SharpAudio.Codec
 
             IsStreamed = !stream.CanSeek;
 
+            _targetStream = stream;
+
             _soundSink = sink;
 
-            _decoder = new FFmpegDecoder(stream);
-
+            _decoder = new FFmpegDecoder(_targetStream);
 
             var streamThread = new Thread(MainLoop);
-            streamThread.Start();
 
-            // Task.Factory.StartNew(MainLoop, TaskCreationOptions.LongRunning | TaskCreationOptions.AttachedToParent);
+            streamThread.Start();
         }
 
         /// <summary>
@@ -58,6 +58,8 @@ namespace SharpAudio.Codec
         ///     Whether or not the audio is streamed
         /// </summary>
         public bool IsStreamed { get; }
+
+        private readonly Stream _targetStream;
 
         /// <summary>
         ///     The volume of the source
@@ -83,8 +85,6 @@ namespace SharpAudio.Codec
         public void Dispose()
         {
             _state = SoundStreamState.Stop;
-            _decoder?.Dispose();
-            _buffer?.Dispose();
         }
 
         public event PropertyChangedEventHandler PropertyChanged;
@@ -121,7 +121,7 @@ namespace SharpAudio.Codec
 
         private void MainLoop()
         {
-            do
+            while (_state != SoundStreamState.Stop)
             {
                 switch (_state)
                 {
@@ -167,7 +167,12 @@ namespace SharpAudio.Codec
                 }
 
                 Thread.Sleep(SampleWait);
-            } while (_state != SoundStreamState.Stop);
+
+            }
+
+            _targetStream?.Dispose();
+            _decoder?.Dispose();
+            _buffer?.Dispose();
 
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Position)));
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(State)));
