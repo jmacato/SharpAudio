@@ -79,6 +79,9 @@ namespace SharpAudio.Codec.FFMPEG
 
         private unsafe int Read(void* opaque, byte* targetBuffer, int targetBufferLength)
         {
+            if (_isDisposed)
+                return ffmpeg.AVERROR_EOF;
+
             try
             {
                 var readCount = targetStream.Read(ffmpegFSBuf, 0, ffmpegFSBuf.Length);
@@ -336,7 +339,7 @@ namespace SharpAudio.Codec.FFMPEG
             {
                 if (targetStream.CanSeek)
                     targetStream.Seek(0, SeekOrigin.Begin);
-                    
+
                 _isDisposed = true;
             }
         }
