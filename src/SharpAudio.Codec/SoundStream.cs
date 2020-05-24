@@ -14,12 +14,8 @@ namespace SharpAudio.Codec
         private AudioBuffer _buffer;
         private byte[] _data;
         private Decoder _decoder;
-        private byte[] _silence;
-
         private readonly SoundSink _soundSink;
-
         private volatile SoundStreamState _state = SoundStreamState.PreparePlay;
-        private volatile bool hasDecodedSamples = false;
 
         /// <summary>
         ///     Initializes a new instance of the <see cref="SoundStream" /> class.
@@ -43,12 +39,7 @@ namespace SharpAudio.Codec
 
             streamThread.Start();
         }
-
-        /// <summary>
-        ///     The audio format of this stream
-        /// </summary>
-        public AudioFormat Format => _decoder.Format;
-
+        
         /// <summary>
         ///     Whether or not the audio is finished
         /// </summary>
