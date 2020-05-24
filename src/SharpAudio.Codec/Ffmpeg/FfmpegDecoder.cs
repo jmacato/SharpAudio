@@ -186,7 +186,11 @@ namespace SharpAudio.Codec.FFMPEG
             tempSampleBuf = new byte[_audioFormat.SampleRate * _audioFormat.Channels * 5];
             _slidestream = new CircularBuffer(tempSampleBuf.Length);
 
-            Task.Factory.StartNew(MainLoop, TaskCreationOptions.LongRunning | TaskCreationOptions.AttachedToParent);
+
+            var decoderThread = new Thread(MainLoop);
+            decoderThread.Start();
+            
+            // Task.Factory.StartNew(MainLoop, TaskCreationOptions.LongRunning | TaskCreationOptions.AttachedToParent);
         }
 
         private unsafe void SetAudioFormat()
@@ -198,7 +202,7 @@ namespace SharpAudio.Codec.FFMPEG
                                  _DESIRED_CHANNEL_COUNT);
         }
 
-        public async Task MainLoop()
+        public void MainLoop()
         {
             var frameFinished = 0;
             var count = 0;

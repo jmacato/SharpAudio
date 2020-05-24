@@ -37,7 +37,11 @@ namespace SharpAudio.Codec
 
             _decoder = new FFmpegDecoder(stream);
 
-            Task.Factory.StartNew(MainLoop, TaskCreationOptions.LongRunning | TaskCreationOptions.AttachedToParent);
+
+            var streamThread = new Thread(MainLoop);
+            streamThread.Start();
+
+            // Task.Factory.StartNew(MainLoop, TaskCreationOptions.LongRunning | TaskCreationOptions.AttachedToParent);
         }
 
         /// <summary>
@@ -115,7 +119,7 @@ namespace SharpAudio.Codec
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(State)));
         }
 
-        private async Task MainLoop()
+        private void MainLoop()
         {
             do
             {

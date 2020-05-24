@@ -25,8 +25,12 @@ namespace SharpAudio.SpectrumAnalysis
         public SpectrumProcessor()
         {
             _binaryExp = (int) Math.Log(_fftLength, 2.0);
-            _ = Task.Factory.StartNew(SpectrumLoop,
-                TaskCreationOptions.LongRunning | TaskCreationOptions.AttachedToParent);
+
+            var spectrumThread = new Thread(SpectrumLoop);
+            spectrumThread.Start();
+
+            // _ = Task.Factory.StartNew(,
+            //     TaskCreationOptions.LongRunning | TaskCreationOptions.AttachedToParent);
         }
 
         public void Dispose()
@@ -78,7 +82,7 @@ namespace SharpAudio.SpectrumAnalysis
             }
         }
 
-        private async Task SpectrumLoop()
+        private void SpectrumLoop()
         {
             // Assuming 16 bit PCM, Little-endian, 2 Channels.
             var specSamples = _fftLength * _totalCh * sizeof(short);

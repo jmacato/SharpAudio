@@ -26,15 +26,16 @@ namespace SharpAudio.Codec
                 BitsPerSample = 16
             };
 
-            _silenceData =
-                new byte[(int) (_format.Channels * _format.SampleRate * sizeof(ushort) * SampleQuantum.TotalSeconds)];
+            _silenceData = 
+                new byte[(int)(_format.Channels * _format.SampleRate * sizeof(ushort) * SampleQuantum.TotalSeconds)];
             Engine = audioEngine;
             _spectrumProcessor = spectrumProcessor;
             _chain = new BufferChain(Engine);
             _circBuffer = new CircularBuffer(_silenceData.Length);
             _tempBuf = new byte[_silenceData.Length];
 
-            Task.Factory.StartNew(MainLoop, TaskCreationOptions.LongRunning | TaskCreationOptions.AttachedToParent);
+            var sinkThread = new Thread(MainLoop);
+            sinkThread.Start();
         }
 
         public AudioEngine Engine { get; }
@@ -52,7 +53,7 @@ namespace SharpAudio.Codec
             }
         }
 
-        private async Task MainLoop()
+        private void MainLoop()
         {
             Source = Engine.CreateSource();
             _chain.QueueData(Source, _silenceData, _format);
