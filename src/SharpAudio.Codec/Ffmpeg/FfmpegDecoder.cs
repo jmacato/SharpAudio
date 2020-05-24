@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Reflection;
 using System.Runtime.InteropServices;
+using System.Threading;
 using System.Threading.Tasks;
 using FFmpeg.AutoGen;
 
@@ -207,7 +208,7 @@ namespace SharpAudio.Codec.FFMPEG
                 if (_isDecoderFinished)
                     return;
 
-                await Task.Delay(1);
+                Thread.Sleep(1);
 
                 if (_slidestream.Length > sampleByteSize)
                     continue;

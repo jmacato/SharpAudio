@@ -1,4 +1,5 @@
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 using SharpAudio.SpectrumAnalysis;
 
@@ -59,7 +60,7 @@ namespace SharpAudio.Codec
 
             while (!_isDisposed)
             {
-                await Task.Delay(1);
+                Thread.Sleep(1);
 
                 if (Source.BuffersQueued >= 3)
                     continue;

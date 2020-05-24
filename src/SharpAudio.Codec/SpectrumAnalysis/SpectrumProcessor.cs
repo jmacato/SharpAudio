@@ -1,5 +1,6 @@
 using System;
 using System.Numerics;
+using System.Threading;
 using System.Threading.Tasks;
 using SharpAudio.Codec;
 
@@ -92,7 +93,7 @@ namespace SharpAudio.SpectrumAnalysis
 
             do
             {
-                await Task.Delay(_sampleWait);
+                Thread.Sleep(_sampleWait);
 
                 if (FftDataReady is null) continue;
 
