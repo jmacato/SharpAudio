@@ -14,7 +14,6 @@ namespace SharpAudio.Codec
         private readonly byte[] _silenceData;
         private readonly SpectrumProcessor _spectrumProcessor;
         private readonly byte[] _tempBuf;
-
         private volatile bool _isDisposed;
 
         public SoundSink(AudioEngine audioEngine, SpectrumProcessor spectrumProcessor)
@@ -26,7 +25,7 @@ namespace SharpAudio.Codec
                 BitsPerSample = 16
             };
 
-            _silenceData = 
+            _silenceData =
                 new byte[(int)(_format.Channels * _format.SampleRate * sizeof(ushort) * SampleQuantum.TotalSeconds)];
             Engine = audioEngine;
             _spectrumProcessor = spectrumProcessor;
@@ -53,15 +52,29 @@ namespace SharpAudio.Codec
             }
         }
 
-        private void MainLoop()
+        private void InitializeSource()
         {
+            Source?.Dispose();
             Source = Engine.CreateSource();
             _chain.QueueData(Source, _silenceData, _format);
             Source.Play();
+        }
+
+
+        private void MainLoop()
+        {
+            InitializeSource();
 
             while (!_isDisposed)
             {
                 Thread.Sleep(1);
+
+                if (!Source.IsPlaying())
+                {
+                    Thread.Sleep(TimeSpan.FromSeconds(0.5));
+                    InitializeSource();
+                    continue;
+                }
 
                 if (Source.BuffersQueued >= 3)
                     continue;
