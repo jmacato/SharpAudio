@@ -60,7 +60,6 @@ namespace SharpAudio.Codec
             Source.Play();
         }
 
-
         private void MainLoop()
         {
             InitializeSource();
