@@ -209,8 +209,11 @@ namespace SharpAudio.Codec.FFMPEG
             var frameFinished = 0;
             var count = 0;
 
-            while (!_isDecoderFinished | !_isDisposed)
+            while (!_isDecoderFinished)
             {
+                if(_isDisposed)
+                    break;
+
                 Thread.Sleep(1);
 
                 if (_slidestream.Length > sampleByteSize)

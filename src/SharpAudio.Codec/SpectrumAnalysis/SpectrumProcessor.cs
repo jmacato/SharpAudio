@@ -24,7 +24,7 @@ namespace SharpAudio.SpectrumAnalysis
 
         public SpectrumProcessor()
         {
-            _binaryExp = (int) Math.Log(_fftLength, 2.0);
+            _binaryExp = (int)Math.Log(_fftLength, 2.0);
 
             var spectrumThread = new Thread(SpectrumLoop);
             spectrumThread.Start();
@@ -48,27 +48,27 @@ namespace SharpAudio.SpectrumAnalysis
             var processedFft = new double[ch, n];
 
             for (var c = 0; c < ch; c++)
-            for (var i = 0; i < n; i++)
-            {
-                var complex = fftResults[c, i];
+                for (var i = 0; i < n; i++)
+                {
+                    var complex = fftResults[c, i];
 
-                var magnitude = complex.Magnitude;
-                if (Math.Abs(magnitude) < double.Epsilon) continue;
+                    var magnitude = complex.Magnitude;
+                    if (Math.Abs(magnitude) < double.Epsilon) continue;
 
-                // decibel
-                var result = (20 * Math.Log10(magnitude) - MinDbValue) / DbScale * 1;
+                    // decibel
+                    var result = (20 * Math.Log10(magnitude) - MinDbValue) / DbScale * 1;
 
-                // normalised decibel
-                //var result = (((10 * Math.Log10((complex.Real * complex.Real) + (complex.Imaginary * complex.Imaginary))) - MinDbValue) / DbScale) * 1;
+                    // normalised decibel
+                    //var result = (((10 * Math.Log10((complex.Real * complex.Real) + (complex.Imaginary * complex.Imaginary))) - MinDbValue) / DbScale) * 1;
 
-                // linear
-                //var result = (magnitude * 9) * 1;
+                    // linear
+                    //var result = (magnitude * 9) * 1;
 
-                // sqrt                
-                //var result = ((Math.Sqrt(magnitude)) * 2) * 1;
+                    // sqrt                
+                    //var result = ((Math.Sqrt(magnitude)) * 2) * 1;
 
-                processedFft[c, i] = Math.Max(0, result);
-            }
+                    processedFft[c, i] = Math.Max(0, result);
+                }
 
             return processedFft;
         }
@@ -95,7 +95,7 @@ namespace SharpAudio.SpectrumAnalysis
 
             for (var i = 0; i < _fftLength; i++) cachedWindowVal[i] = FastFourierTransform.HammingWindow(i, _fftLength);
 
-            do
+            while (!_isDisposed)
             {
                 Thread.Sleep(_sampleWait);
 
@@ -153,7 +153,7 @@ namespace SharpAudio.SpectrumAnalysis
                 FftDataReady?.Invoke(this, Fft2Double(complexSamples, _totalCh, _fftLength));
 
                 Array.Clear(samplesDouble, 0, samplesDouble.Length);
-            } while (!_isDisposed);
+            }
         }
     }
 }

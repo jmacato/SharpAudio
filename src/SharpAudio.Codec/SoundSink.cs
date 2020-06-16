@@ -45,11 +45,7 @@ namespace SharpAudio.Codec
 
         public void Dispose()
         {
-            if (!_isDisposed)
-            {
-                Source.Stop();
-                Source.Dispose();
-            }
+            _isDisposed = true;
         }
 
         private void InitializeSource()
@@ -101,6 +97,10 @@ namespace SharpAudio.Codec
                     _chain.QueueData(Source, _silenceData, _format);
                 }
             }
+
+            Source?.Stop();
+            Source?.Dispose();
+            _spectrumProcessor?.Dispose();
         }
 
         public void Send(byte[] data)
