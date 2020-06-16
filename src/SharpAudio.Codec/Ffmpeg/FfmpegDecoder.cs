@@ -33,7 +33,14 @@ namespace SharpAudio.Codec.FFMPEG
 
         static FFmpegDecoder()
         {
-            var curPath = Path.GetDirectoryName(Assembly.GetEntryAssembly()?.Location);
+            // For common case native binaries located in specific for OS+Architecture folder:
+            // - runtimes/
+            // - - win7-x86/
+            // - - - native/*.dll
+            // - - osx-x86/
+            // - - - native/*.dll
+            // But when we pack application with MSIX or self-contained for specific architecture, it has another structure:
+            // - runtime/*.dll
 
             string runtimeId = null;
 
@@ -61,8 +68,20 @@ namespace SharpAudio.Codec.FFMPEG
                     _ => runtimeId
                 };
 
-            if (runtimeId != null)
-                ffmpeg.RootPath = Path.Combine(curPath, $"runtimes/{runtimeId}/native/");
+            var curPath = Path.GetDirectoryName(Assembly.GetEntryAssembly()?.Location);
+            var specificRuntimeFolder = Path.Combine(curPath, "runtimes", runtimeId, "native");
+            if (Directory.Exists(specificRuntimeFolder))
+            {
+                ffmpeg.RootPath = specificRuntimeFolder;
+            }
+            else
+            {
+                var singleRuntimeFolder = Path.Combine(curPath, "runtime");
+                if (Directory.Exists(singleRuntimeFolder))
+                {
+                    ffmpeg.RootPath = singleRuntimeFolder;
+                }
+            }
         }
 
         public FFmpegDecoder(Stream src)
