@@ -28,9 +28,6 @@ namespace SharpAudio.SpectrumAnalysis
 
             var spectrumThread = new Thread(SpectrumLoop);
             spectrumThread.Start();
-
-            // _ = Task.Factory.StartNew(,
-            //     TaskCreationOptions.LongRunning | TaskCreationOptions.AttachedToParent);
         }
 
         public void Dispose()
@@ -57,15 +54,6 @@ namespace SharpAudio.SpectrumAnalysis
 
                     // decibel
                     var result = (20 * Math.Log10(magnitude) - MinDbValue) / DbScale * 1;
-
-                    // normalised decibel
-                    //var result = (((10 * Math.Log10((complex.Real * complex.Real) + (complex.Imaginary * complex.Imaginary))) - MinDbValue) / DbScale) * 1;
-
-                    // linear
-                    //var result = (magnitude * 9) * 1;
-
-                    // sqrt                
-                    //var result = ((Math.Sqrt(magnitude)) * 2) * 1;
 
                     processedFft[c, i] = Math.Max(0, result);
                 }
