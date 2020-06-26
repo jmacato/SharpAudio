@@ -104,8 +104,12 @@ namespace SharpAudio.Codec.FFMPEG
             try
             {
                 var readCount = targetStream.Read(ffmpegFSBuf, 0, ffmpegFSBuf.Length);
+                
                 if (readCount > 0)
                     Marshal.Copy(ffmpegFSBuf, 0, (IntPtr)targetBuffer, readCount);
+                else
+                    return ffmpeg.AVERROR_EOF; // fixes Invalid return value 0 for stream protocol.
+                                               // related problem: https://trac.mplayerhq.hu/ticket/2335
 
                 return readCount;
             }
@@ -230,7 +234,7 @@ namespace SharpAudio.Codec.FFMPEG
 
             while (!_isDecoderFinished)
             {
-                if(_isDisposed)
+                if (_isDisposed)
                     break;
 
                 Thread.Sleep(1);
