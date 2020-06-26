@@ -112,7 +112,7 @@ namespace SharpAudio.Codec
 
         private void MainLoop()
         {
-            while (_state != SoundStreamState.Stop & _state != SoundStreamState.TrackEnd)
+            while (_state != SoundStreamState.Stop & _state != SoundStreamState.TrackFinished)
             {
                 switch (_state)
                 {
@@ -132,7 +132,7 @@ namespace SharpAudio.Codec
 
                             if (res == -1)
                             {
-                                _state = SoundStreamState.TrackEnd;
+                                _state = SoundStreamState.TrackFinished;
                                 continue;
                             }
 
@@ -142,7 +142,7 @@ namespace SharpAudio.Codec
 
                         if (_decoder.IsFinished)
                         {
-                            _state = SoundStreamState.TrackEnd;
+                            _state = SoundStreamState.TrackFinished;
                             continue;
                         }
 
