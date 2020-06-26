@@ -39,7 +39,7 @@ namespace SharpAudio.Codec
 
             streamThread.Start();
         }
-        
+
         /// <summary>
         ///     Whether or not the audio is finished
         /// </summary>
@@ -112,7 +112,7 @@ namespace SharpAudio.Codec
 
         private void MainLoop()
         {
-            while (_state != SoundStreamState.Stop)
+            while (_state != SoundStreamState.Stop & _state != SoundStreamState.TrackEnd)
             {
                 switch (_state)
                 {
@@ -132,7 +132,7 @@ namespace SharpAudio.Codec
 
                             if (res == -1)
                             {
-                                _state = SoundStreamState.Stopping;
+                                _state = SoundStreamState.TrackEnd;
                                 continue;
                             }
 
@@ -142,15 +142,10 @@ namespace SharpAudio.Codec
 
                         if (_decoder.IsFinished)
                         {
-                            _state = SoundStreamState.Stopping;
+                            _state = SoundStreamState.TrackEnd;
                             continue;
                         }
 
-                        break;
-
-                    case SoundStreamState.Stopping:
-                        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Position)));
-                        _state = SoundStreamState.Stop;
                         break;
 
                     case SoundStreamState.Paused:
