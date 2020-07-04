@@ -11,7 +11,6 @@ namespace SharpAudio.Codec
     {
         private readonly TimeSpan SampleQuantum = TimeSpan.FromSeconds(0.05);
         private readonly TimeSpan SampleWait = TimeSpan.FromMilliseconds(1);
-        private AudioBuffer _buffer;
         private byte[] _data;
         private Decoder _decoder;
         private readonly SoundSink _soundSink;
@@ -156,9 +155,8 @@ namespace SharpAudio.Codec
 
             }
 
-            _targetStream?.Dispose();
-            _decoder?.Dispose();
-            _buffer?.Dispose();
+            _decoder.Dispose();
+            _targetStream.Dispose();
 
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Position)));
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(State)));
