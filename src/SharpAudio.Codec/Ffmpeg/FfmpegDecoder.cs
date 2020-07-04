@@ -33,6 +33,11 @@ namespace SharpAudio.Codec.FFMPEG
 
         static FFmpegDecoder()
         {
+            DoLibraryRuntimePathDetection();
+        }
+
+        private static void DoLibraryRuntimePathDetection()
+        {
             // For common case native binaries located in specific for OS+Architecture folder:
             // - runtimes/
             // - - win7-x86/
@@ -44,20 +49,15 @@ namespace SharpAudio.Codec.FFMPEG
 
             string runtimeId = null;
 
+            // Just use the system-wide ffmpeg libraries when on linux.
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+                return;
+
             if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
                 runtimeId = RuntimeInformation.OSArchitecture switch
                 {
                     Architecture.X64 => "win7-x64",
                     Architecture.X86 => "win7-x86",
-                    _ => runtimeId
-                };
-            else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
-                runtimeId = RuntimeInformation.OSArchitecture switch
-                {
-                    Architecture.X64 => "linux-x64",
-                    Architecture.X86 => "linux-x86",
-                    Architecture.Arm => "linux-arm",
-                    Architecture.Arm64 => "linux-arm64",
                     _ => runtimeId
                 };
             else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
@@ -104,7 +104,7 @@ namespace SharpAudio.Codec.FFMPEG
             try
             {
                 var readCount = targetStream.Read(ffmpegFSBuf, 0, ffmpegFSBuf.Length);
-                
+
                 if (readCount > 0)
                     Marshal.Copy(ffmpegFSBuf, 0, (IntPtr)targetBuffer, readCount);
                 else
