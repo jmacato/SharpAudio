@@ -35,13 +35,15 @@ namespace SharpAudio.Sample
                 Console.WriteLine("Failed to create an audio backend!");
             }
 
+            var sink= new SoundSink(engine, null);
+
             foreach (var file in opts.InputFiles)
             {
-                var soundStream = new SoundStream(File.OpenRead(file), engine);
+                var soundStream = new SoundStream(File.OpenRead(file), sink);
 
                 soundStream.Volume = opts.Volume / 100.0f;
 
-                soundStream.Play();
+                soundStream.PlayPause();
 
                 while (soundStream.IsPlaying)
                 {

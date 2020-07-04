@@ -81,7 +81,7 @@ namespace SharpAudio.Codec
                 {
                     _circBuffer.Read(_tempBuf, 0, _tempBuf.Length);
                     _chain.QueueData(Source, _tempBuf, _format);
-                    _spectrumProcessor.Send(_tempBuf);
+                    _spectrumProcessor?.Send(_tempBuf);
                 }
                 else if ((cL < tL) & (cL > 0))
                 {
@@ -90,7 +90,7 @@ namespace SharpAudio.Codec
 
                     Buffer.BlockCopy(remainingSamples, 0, _tempBuf, 0, remainingSamples.Length);
                     _chain.QueueData(Source, _tempBuf, _format);
-                    _spectrumProcessor.Send(_tempBuf);
+                    _spectrumProcessor?.Send(_tempBuf);
                 }
                 else
                 {
